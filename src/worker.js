@@ -1,3 +1,4 @@
+import { REPORT_CRON, runReportCheck } from "./reports.js";
 import { liveWatchlist, pollCommands, withBotLock } from "./commands.js";
 import { newsAllowed } from "./filters.js";
 import { ALIASES } from "./watchlist.js";
@@ -198,6 +199,10 @@ export async function runNewsCheck(env, scheduledAt = Date.now(), deadline = Dat
 
 export default {
   async scheduled(controller, env) {
+    if (controller.cron === REPORT_CRON) {
+      await runReportCheck(env, controller.scheduledTime);
+      return;
+    }
     await withBotLock(env, async () => {
       const deadline = Date.now() + 230000;
       try { await pollCommands(env); }

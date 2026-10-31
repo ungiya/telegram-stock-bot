@@ -54,7 +54,7 @@ export async function authorized(env, message) {
   }
 }
 
-const help = '클라우드 뉴스봇\n/list 목록\n/add 회사명\n/remove 회사명\n/status 상태\n/pause 뉴스 전송 정지\n/resume 재개\n명령은 매분 확인하므로 응답까지 약 1분 걸릴 수 있습니다.';
+const help = '클라우드 뉴스봇\n/list 목록\n/add 회사명\n/remove 회사명\n/status 상태\n/pause 뉴스·리포트 전송 정지\n/resume 재개\n명령은 매분 확인하므로 응답까지 약 1분 걸릴 수 있습니다.';
 
 export async function handleCommand(env, message, command) {
   if (!await authorized(env, message)) return;
@@ -66,10 +66,11 @@ export async function handleCommand(env, message, command) {
     const state = await env.DB.prepare('SELECT * FROM bot_runtime WHERE id = 1').first();
     reply = '클라우드 실행 중 · 검색 주기 1분\n종목: ' + companies.size + '개\n뉴스 전송: ' + (state.paused ? '일시정지' : '켜짐');
     if (state.last_checked_ms) reply += '\n최근 검색: ' + new Date(state.last_checked_ms).toISOString() + '\n검색 성공: ' + state.last_checked_count + '개 · 발송: ' + state.last_sent_count + '건';
-    reply += '\n리포트 기능: 아직 이전되지 않음';
+    const reports = await env.DB.prepare('SELECT last_summary FROM report_runtime WHERE id = 1').first();
+    reply += '\n리포트: 매일 08:00 / 18:00 / 23:00 (한국시간)부터 수집\n' + (reports?.last_summary || '첫 수집 대기 중');
   } else if (command.name === 'pause' || command.name === 'resume') {
     await env.DB.prepare('UPDATE bot_runtime SET paused = ? WHERE id = 1').bind(command.name === 'pause' ? 1 : 0).run();
-    reply = command.name === 'pause' ? '뉴스 전송을 일시정지했습니다. 검색은 계속합니다. /resume 재개' : '뉴스 전송을 재개했습니다.';
+    reply = command.name === 'pause' ? '뉴스·리포트 전송을 일시정지했습니다. 검색은 계속합니다. /resume 재개' : '뉴스·리포트 전송을 재개했습니다.';
   } else if (command.name === 'add' || command.name === 'remove') {
     if (!command.arg || command.arg.length > 80 || !norm(command.arg) || /[\r\n\x00-\x1f]/.test(command.arg)) {
       reply = '사용법: /' + command.name + ' 회사명 (한 번에 한 종목, 80자 이내)';
@@ -85,6 +86,8 @@ export async function handleCommand(env, message, command) {
           .bind(key, JSON.stringify(aliases), command.name === 'add' ? 1 : 0)];
         if (command.name === 'remove') {
           writes.push(env.DB.prepare('UPDATE articles SET sent_ms = ?, lease_until_ms = NULL WHERE ticker = ? AND sent_ms IS NULL').bind(Date.now(), key));
+          writes.push(env.DB.prepare('UPDATE report_alerts SET sent_ms = ? WHERE ticker = ? AND sent_ms IS NULL').bind(Date.now(), key));
+          writes.push(env.DB.prepare('UPDATE report_items SET processed = 1 WHERE ticker = ? AND processed = 0').bind(key));
           writes.push(env.DB.prepare('DELETE FROM topic_state WHERE ticker = ?').bind(key));
         }
         await env.DB.batch(writes);
