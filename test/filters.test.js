@@ -4,8 +4,9 @@ import { newsAllowed } from '../src/filters.js';
 import { ALIASES, WATCHLIST } from '../src/watchlist.js';
 import { normalizeArticle } from '../src/worker.js';
 
-test('Termux defaults preserve all 22 companies and aliases', () => {
-  assert.equal(WATCHLIST.length, 22);
+test('Termux defaults preserve all 25 operational companies and aliases', () => {
+  assert.equal(WATCHLIST.length, 25);
+  for (const name of ['씨어스', 'sk이노베이션', '에이치브이엠']) assert.ok(WATCHLIST.includes(name));
   assert.deepEqual(ALIASES['LS일렉트릭'], ['LS일렉트릭', 'LS ELECTRIC']);
 });
 test('exclude promotional and price-only headlines, retain material news', () => {

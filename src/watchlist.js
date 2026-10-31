@@ -1,4 +1,4 @@
-// Defaults from uploaded Termux source; runtime /add and /remove state is separate.
+// Operational watchlist transcribed from the user's Termux state (2026-11-01 KST).
 export const ALIASES = {
   "무신사": [
     "무신사",
@@ -69,6 +69,15 @@ export const ALIASES = {
   ],
   "클래시스": [
     "클래시스"
+  ],
+  "씨어스": [
+    "씨어스"
+  ],
+  "sk이노베이션": [
+    "sk이노베이션"
+  ],
+  "에이치브이엠": [
+    "에이치브이엠"
   ]
 };
 export const WATCHLIST = Object.keys(ALIASES);
