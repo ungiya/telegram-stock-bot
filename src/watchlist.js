@@ -1,4 +1,4 @@
-// Operational watchlist transcribed from the user's Termux state (2026-11-01 KST).
+// Operational watchlist; edit aliases to customize news searches.
 export const ALIASES = {
   "무신사": [
     "무신사",
@@ -78,6 +78,9 @@ export const ALIASES = {
   ],
   "에이치브이엠": [
     "에이치브이엠"
+  ],
+  "달바글로벌": [
+    "달바글로벌"
   ]
 };
 export const WATCHLIST = Object.keys(ALIASES);
