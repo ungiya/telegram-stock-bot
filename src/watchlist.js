@@ -1,16 +1,74 @@
-// Change this list to customize alerts. Each query costs one Naver API call/minute.
-// 12 queries * 1440 minutes = 17,280 calls/day (within Naver's 25,000/day quota).
-export const WATCHLIST = [
-  "에이피알",
-  "시프트업",
-  "크래프톤",
-  "엔씨소프트",
-  "펄어비스",
-  "서진시스템",
-  "한중엔시에스",
-  "신성에스티",
-  "LS ELECTRIC",
-  "효성중공업",
-  "삼성전자",
-  "SK하이닉스",
-];
+// Defaults from uploaded Termux source; runtime /add and /remove state is separate.
+export const ALIASES = {
+  "무신사": [
+    "무신사",
+    "MUSINSA"
+  ],
+  "에이피알": [
+    "에이피알"
+  ],
+  "디앤디파마텍": [
+    "디앤디파마텍"
+  ],
+  "알테오젠": [
+    "알테오젠"
+  ],
+  "한화솔루션": [
+    "한화솔루션"
+  ],
+  "서진시스템": [
+    "서진시스템"
+  ],
+  "한중엔시에스": [
+    "한중엔시에스"
+  ],
+  "신성에스티": [
+    "신성에스티"
+  ],
+  "에이프릴바이오": [
+    "에이프릴바이오"
+  ],
+  "웰마커바이오": [
+    "웰마커바이오"
+  ],
+  "리디": [
+    "리디",
+    "리디북스"
+  ],
+  "와디즈": [
+    "와디즈"
+  ],
+  "엘앤씨바이오": [
+    "엘앤씨바이오"
+  ],
+  "효성중공업": [
+    "효성중공업"
+  ],
+  "리브스메드": [
+    "리브스메드"
+  ],
+  "LS일렉트릭": [
+    "LS일렉트릭",
+    "LS ELECTRIC"
+  ],
+  "엔씨소프트": [
+    "엔씨소프트",
+    "NCSOFT"
+  ],
+  "크래프톤": [
+    "크래프톤"
+  ],
+  "넷마블": [
+    "넷마블"
+  ],
+  "시프트업": [
+    "시프트업"
+  ],
+  "파마리서치": [
+    "파마리서치"
+  ],
+  "클래시스": [
+    "클래시스"
+  ]
+};
+export const WATCHLIST = Object.keys(ALIASES);

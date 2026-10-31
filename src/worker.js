@@ -1,8 +1,9 @@
-import { WATCHLIST } from "./watchlist.js";
+import { newsAllowed } from "./filters.js";
+import { WATCHLIST, ALIASES } from "./watchlist.js";
 
-const NAVER_NEWS_API = "https://openapi.naver.com/v1/search/news.json";
+const NAVER_NEWS_API = "https://naverapihub.apigw.ntruss.com/search/v1/news";
 const TELEGRAM_API = "https://api.telegram.org";
-const FRESHNESS_MS = 3 * 60 * 60 * 1000;
+const FRESHNESS_MS = 24 * 60 * 60 * 1000;
 const MAX_PER_ALERT = 10;
 
 export function cleanTitle(value) {
@@ -46,6 +47,8 @@ export function normalizeArticle(item, ticker, now) {
   if (!url || !title || !Number.isFinite(publishedAt) || publishedAt > now + 300_000) {
     return null;
   }
+  const description = cleanTitle(item.description);
+  if (!newsAllowed(ticker, ALIASES[ticker] || [ticker], title, description)) return null;
   return { url, ticker, title, publishedAt };
 }
 
@@ -66,21 +69,26 @@ export function formatTelegramMessage(rows) {
 }
 
 async function searchNews(env, ticker) {
+  const items = [];
+  for (const query of ALIASES[ticker] || [ticker]) {
   const url = new URL(NAVER_NEWS_API);
-  url.searchParams.set("query", ticker);
-  url.searchParams.set("display", "10");
+  url.searchParams.set("query", query);
+  url.searchParams.set("display", "100");
+  url.searchParams.set("format", "json");
   url.searchParams.set("sort", "date");
   const response = await fetch(url, {
     headers: {
-      "X-Naver-Client-Id": env.NAVER_CLIENT_ID,
-      "X-Naver-Client-Secret": env.NAVER_CLIENT_SECRET,
+      "X-NCP-APIGW-API-KEY-ID": env.NAVER_CLIENT_ID,
+      "X-NCP-APIGW-API-KEY": env.NAVER_CLIENT_SECRET,
     },
     signal: AbortSignal.timeout(8000),
   });
   if (!response.ok) throw new Error("Naver news API status " + response.status);
   const payload = await response.json();
   if (!Array.isArray(payload.items)) throw new Error("Invalid Naver news response");
-  return payload.items;
+  items.push(...payload.items);
+  }
+  return items;
 }
 
 async function pollTopic(env, ticker, now) {
@@ -191,3 +199,4 @@ export default {
     return new Response("Not found", { status: 404 });
   },
 };
+
