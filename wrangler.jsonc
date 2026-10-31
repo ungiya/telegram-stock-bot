@@ -3,7 +3,11 @@
   "name": "telegram-stock-news-alert",
   "main": "src/worker.js",
   "compatibility_date": "2026-10-01",
-  "triggers": { "crons": ["* * * * *"] },
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -11,5 +15,14 @@
       "database_id": "bfe8db9f-a434-4e7c-a1a1-c0185f49e75c",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    }
+  }
 }
