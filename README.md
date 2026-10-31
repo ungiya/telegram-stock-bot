@@ -1,60 +1,71 @@
 # 관심 종목 뉴스 → Telegram (1분 간격)
 
-기존 Termux 봇을 대체할 **Cloudflare Workers + D1** 기반 뉴스 전송 프로젝트입니다.
-GitHub는 **코드/버전관리 및 자동 배포**를 담당하고, 실제 매분 실행은 Cloudflare가 담당합니다.
-업로드된 Termux `newsbot.py`에서 기본 22개 종목·별칭과 뉴스 제외 필터를 이식했습니다. 2026-11-01에 제공된 Termux state.json 화면의 실제 운영 25개 종목과 별칭으로 동기화했습니다. 이후 Termux 명령 변경은 자동 동기화되지 않습니다. Telegram 명령(/add, /remove, /pause 등), 여러 구독자, 리포트 일정 기능은 아직 이식하지 않았습니다. 현재 Worker는 지정한 한 대상에 뉴스를 발송합니다.
+GitHub는 코드와 자동 배포 소스, Cloudflare Workers는 매분 실행, D1은 기사 중복 기록과 운영 설정을 담당합니다. 현재 기본 목록은 달바글로벌을 포함한 26개입니다. 뉴스 필터는 기존 Termux 코드에서 옮겼습니다. 리포트 수집·다중 구독자 관리는 아직 이전하지 않았습니다.
 
-## 기능
-- 기존 Naver API Hub 뉴스 검색의 최신순(sort=date)으로 26개 종목·30개 검색어 조회
-- 제목의 회사명 일치 확인, 광고·단순 주가·크래프톤 대회 기사 필터 유지
-- Cloudflare Cron Trigger로 매 1분 검색 (실행이 지연될 수 있음)
-- 기사 원문 URL 정규화 및 D1 중복 차단
-- 새로 등록한 종목의 첫 실행은 기준선만 쌓고 과거 기사 전송 안 함
-- 이후 기사 발행시간이 최근 24시간 이내인 결과를 최대 10건씩 묶어 Telegram 전송
-- 수집·발송 실패 로그, 전송 재시도, 최근 7일 중복 기록 유지
+## 텔레그램에서 관리
 
-**한계:** 뉴스 원문 발행·네이버 검색 색인·Cloudflare 예약 실행이 각각 지연될 수 있으므로 '기사 게시 즉시' 전송은 보장하지 않습니다. 회사명이 제목에 있어야 하며, 동명이인을 가리키면 잡음이 발생할 수 있습니다. Telegram이 수신한 직후 D1 기록 저장에 실패하면 드물게 중복 알림이 발생할 수 있습니다. 네이버 API 응답의 최신 100건 중 빠진 기사는 감지하지 못할 수도 있습니다.
+기존 봇의 **개인 대화창**에서 다음 명령을 보냅니다.
 
-## 1. Cloudflare 계정/Workers 준비
-1. https://dash.cloudflare.com 에서 무료 계정을 생성합니다.
-2. Workers & Pages / D1에서 **telegram-stock-news-db** 이름으로 D1 데이터베이스를 생성합니다.
-3. D1 Database ID를 복사하여 `wrangler.jsonc`의 `REPLACE_WITH_YOUR_D1_DATABASE_ID`를 교체합니다.
-4. GitHub 저장소 → Settings → Secrets and variables → Actions 에서
-   - `CLOUDFLARE_API_TOKEN`: Workers 및 D1 배포 권한이 있는 Cloudflare API 토큰
-   - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare 계정 ID
-   등록합니다.
-5. GitHub Actions > Deploy Cloudflare news alert > Run workflow 로 실행합니다. 이후 main에 코드 수정 사항을 푸시할 때 자동 배포됩니다.
+| 명령 | 기능 |
+|---|---|
+| `/list` 또는 `list` | 클라우드에서 실제 검색하는 종목 목록 |
+| `/add 회사명` | 종목 추가; 첫 검색은 과거 기사 기록만 저장 |
+| `/remove 회사명` | 종목 검색 제외 및 해당 종목의 대기 기사 발송 취소 |
+| `/status` | 검색 주기, 목록 수, 정지 여부, 최근 검색 상태 |
+| `/pause` | 검색은 계속하고 뉴스 전송만 정지; 정지 중 발견된 기사는 다시 보내지 않음 |
+| `/resume` | 뉴스 전송 재개 |
+| `/start`, `/help` | 사용법 |
 
-## 2. 네이버 뉴스 검색 API
-기존 Termux에서 사용하는 Naver API Hub 인증정보를 재사용합니다. 엔드포인트는 `naverapihub.apigw.ntruss.com/search/v1/news`이며 API Gateway 헤더를 사용합니다. 일반 네이버 개발자센터용 인증정보와 혼동하지 마세요.
+명령은 Cron 실행 시 확인하므로 통상 약 1분 뒤 응답합니다. 검색 지연·명령 대기열이 있으면 더 걸립니다. 최초 실행은 이전 Termux 명령을 재실행하지 않도록 수신 위치만 초기화합니다. 배포 후 첫 Cron이 지난 뒤 새 `/list`를 보내세요.
 
-26개 종목의 별칭까지 검색하면 매분 30회, 하루 **43,200회** 호출합니다. 기존 5분 간격보다 호출량이 약 5배이므로 실제 API Hub 무료 할당량·과금 설정을 확인해야 합니다. 무료 한도 충족은 아직 확인되지 않았습니다.
+**Termux의 기존 봇은 중지해야 합니다.** 같은 토큰으로 두 곳에서 `getUpdates`를 호출하면 명령을 서로 가져가거나 충돌할 수 있습니다. 이미 Telegram webhook이 설정돼 있으면 자동으로 삭제하지 않고 명령 수집을 중단하며 로그를 남깁니다. 뉴스 검색은 계속 시도합니다.
 
-## 3. Telegram 설정
-- Termux에서 사용 중인 텔레그램 봇을 그대로 사용하려면 Bot Token과 대상 chat_id가 필요합니다.
-- 봇을 그룹에 넣는 경우, 발송 권한이 있는지 확인합니다.
-- **토큰과 API 비밀키를 GitHub 코드/이슈/채팅에 붙여넣지 마세요.** Cloudflare Secrets에 직접 넣습니다.
+### 관리자 확인
 
-## 4. Workers 비밀 설정
-Cloudflare 대시보드의 Workers > `telegram-stock-news-alert` > Settings > Variables and Secrets에서 다음 4개를 각각 **Secret**으로 설정합니다.
+- 뉴스 대상이 개인 ID면 그 사용자만 개인 대화에서 명령을 사용할 수 있습니다.
+- 뉴스 대상이 채널·그룹이면 해당 대상의 소유자 또는 관리자인지 `getChatMember`로 확인합니다. 봇에게 대상의 관리자 권한이 필요합니다.
+- 채널 게시물·그룹 메시지·익명 관리자의 메시지로는 목록을 수정할 수 없습니다. 반드시 봇의 개인 대화창에서 관리하세요.
+- 인증 실패 시 목록과 설정을 공개하거나 수정하지 않습니다. 처음 명령을 보낸 사람에게 관리 권한을 주지 않습니다.
+
+### 목록의 저장 위치
+
+`src/watchlist.js`는 기본 종목과 검색 별칭입니다. Telegram 추가·삭제는 D1 `watchlist_overrides`에 저장되고 기본 목록과 합쳐 실제 검색에 사용됩니다. 삭제된 기본 종목은 다음 배포 후에도 삭제 상태를 유지합니다. 같은 종목을 `/add`로 다시 등록할 수 있습니다. 코드에 기본 종목을 추가하면 자동 반영되지만, D1에서 명시적으로 삭제한 종목은 `/add`가 필요합니다.
+
+## 배포
+
+현재 Cloudflare Workers Builds가 GitHub main을 소스로 사용합니다.
+
+- 프로젝트명: `telegram-stock-news-alert`
+- Build command: `npm test`
+- Deploy command: `npm run deploy`
+- `npm run deploy`는 D1 마이그레이션 후 Worker를 배포합니다.
+- Cron: `* * * * *`
+- D1 바인딩: `DB` / `telegram-stock-news-db`
+- 마이그레이션: `0001_init.sql`(기사), `0002_commands.sql`(명령·설정)
+
+별도 GitHub Actions 워크플로도 저장소에 있지만, 현재 Workers Builds와 함께 활성화해 이중 배포하지 마세요. Actions를 별도로 사용하려면 Cloudflare 계정 ID와 배포 토큰을 GitHub Secrets에 등록해야 합니다.
+
+Workers Production의 Secrets:
+
 - `NAVER_CLIENT_ID`
 - `NAVER_CLIENT_SECRET`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
 
-GitHub Actions로 최초 Worker 배포를 완료한 다음 Cloudflare 대시보드에서 위 4개를 입력합니다.
-Workers Secret을 GitHub Actions로 관리하도록 바꾸지 않는 한, 해당 값을 깃허브 비밀변수에 중복 입력할 필요는 없습니다.
+기존 Naver API Hub 인증정보를 사용합니다. 일반 네이버 개발자센터 인증정보와 혼동하지 마세요. API 주소는 `https://naverapihub.apigw.ntruss.com/search/v1/news`입니다.
 
-## 5. 확인과 운영
-- GitHub Actions의 배포 단계가 성공했는지 확인합니다.
-- Cloudflare Workers 대시보드에서 Cron Trigger `* * * * *` 등록을 확인합니다.
-- Cloudflare Workers Logs에서 `Checked 26/26 tickers` 등을 확인합니다.
-- 첫 실행: 기존 기사 알림 없이 초기화. **그 후 신규 검색 결과부터** 알림 발송.
-- 대상 종목을 변경하려면 `src/watchlist.js`를 수정합니다.
-- `GET /health`는 비밀값을 공개하지 않는 단순 상태 페이지입니다. 실시간 점검 결과는 아닙니다.
+## 동작과 한계
 
-## 예상 비용
-Workers / D1 무료 한도를 목표로 합니다. 현재 설정의 API Hub 일 43,200회 호출이 무료인지와 D1 사용량이 무료 범위인지 배포 전에 확인해야 합니다. 서비스 약관, 요금제, 한도가 바뀌거나 조회량이 증가하면 재확인해야 합니다. 무료 플랜은 한도 초과 시 사용이 제한될 수 있습니다.
+제목에 종목명·별칭이 포함된 최신순 100건을 확인합니다. 광고·단순 시세·크래프톤 대회 제외 규칙을 적용하고 최근 24시간 기사를 발송합니다. D1에 원문 URL을 기록해 중복 발송을 막고 한 번에 최대 10건을 묶습니다. 첫 검색은 기존 기사 기준선만 기록합니다. 검색 색인과 예약 실행이 지연될 수 있으며 제목·요약만으로 거르는 필터에는 한계가 있습니다. Telegram 전송 직후 DB 저장이 실패하면 드물게 중복될 수 있습니다.
 
-## 보안 주의
-이 저장소는 현재 **public**입니다. 토큰/비밀번호는 소스 코드, .env, 커밋 기록에 절대 올리지 마세요. 이미 유출된 토큰이 있다면 즉시 재발급해야 합니다.
+실행이 겹치면 D1 잠금으로 뒤 실행을 건너뜁니다. 중단된 실행의 잠금은 5분 후 만료됩니다. 명령 재시도 시 변경은 중복 추가되지 않지만, 응답 메시지가 중복되거나 앞선 변경을 확인하는 문구로 바뀔 수 있습니다. `/pause` 전에 이미 대기 중이던 기사는 재개 후 전송될 수 있습니다.
+
+`GET /health`는 단순 상태 응답이며 실제 검색·전송 성공을 보증하지 않습니다. 로그의 `Checked … tickers`와 Telegram 수신으로 운영을 확인하세요.
+
+## 비용
+
+기본 26개 종목·30개 검색어는 매분 실행 시 하루 43,200회 API 호출입니다. 종목 추가 시 호출 수가 증가합니다. Naver API Hub 실제 무료 할당량·과금 설정과 Workers/D1 무료 한도 충족은 별도 확인이 필요합니다. 비용 0원이 보장된 상태는 아닙니다.
+
+## 보안
+
+저장소는 공개입니다. 비밀키·토큰·운영 state.json을 코드나 커밋에 올리지 마세요. 비밀값은 Cloudflare Secrets에 보관합니다.

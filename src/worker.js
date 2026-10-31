@@ -1,5 +1,6 @@
+import { liveWatchlist, pollCommands, withBotLock } from "./commands.js";
 import { newsAllowed } from "./filters.js";
-import { WATCHLIST, ALIASES } from "./watchlist.js";
+import { ALIASES } from "./watchlist.js";
 
 const NAVER_NEWS_API = "https://naverapihub.apigw.ntruss.com/search/v1/news";
 const TELEGRAM_API = "https://api.telegram.org";
@@ -40,7 +41,7 @@ export function canonicalUrl(value) {
   }
 }
 
-export function normalizeArticle(item, ticker, now) {
+export function normalizeArticle(item, ticker, now, aliases = ALIASES[ticker] || [ticker]) {
   const url = canonicalUrl(item.originallink || item.link);
   const title = cleanTitle(item.title);
   const publishedAt = Date.parse(item.pubDate);
@@ -48,7 +49,7 @@ export function normalizeArticle(item, ticker, now) {
     return null;
   }
   const description = cleanTitle(item.description);
-  if (!newsAllowed(ticker, ALIASES[ticker] || [ticker], title, description)) return null;
+  if (!newsAllowed(ticker, aliases, title, description)) return null;
   return { url, ticker, title, publishedAt };
 }
 
@@ -68,9 +69,9 @@ export function formatTelegramMessage(rows) {
   return [header, ...lines].join("\n\n");
 }
 
-async function searchNews(env, ticker) {
+async function searchNews(env, ticker, aliases) {
   const items = [];
-  for (const query of ALIASES[ticker] || [ticker]) {
+  for (const query of aliases) {
   const url = new URL(NAVER_NEWS_API);
   url.searchParams.set("query", query);
   url.searchParams.set("display", "100");
@@ -91,21 +92,21 @@ async function searchNews(env, ticker) {
   return items;
 }
 
-async function pollTopic(env, ticker, now) {
-  const items = await searchNews(env, ticker);
+async function pollTopic(env, ticker, aliases, now, paused) {
+  const items = await searchNews(env, ticker, aliases);
   const baseline = await env.DB.prepare(
     "SELECT initialized_at FROM topic_state WHERE ticker = ?"
   ).bind(ticker).first();
 
   const articles = items
-    .map((item) => normalizeArticle(item, ticker, now))
+    .map((item) => normalizeArticle(item, ticker, now, aliases))
     .filter((item) => item && (!baseline || item.publishedAt >= now - FRESHNESS_MS));
 
   const writes = articles.map((item) => env.DB.prepare(
     "INSERT OR IGNORE INTO articles " +
     "(url, ticker, title, pub_ms, discovered_ms, sent_ms, lease_until_ms) " +
     "VALUES (?, ?, ?, ?, ?, ?, NULL)"
-  ).bind(item.url, item.ticker, item.title, item.publishedAt, now, baseline ? null : now));
+  ).bind(item.url, item.ticker, item.title, item.publishedAt, now, baseline && !paused ? null : now));
 
   // For a new ticker, record current search results as seen; don't flood Telegram with old news.
   if (!baseline) {
@@ -116,15 +117,19 @@ async function pollTopic(env, ticker, now) {
   if (writes.length) await env.DB.batch(writes);
 }
 
-async function sendPending(env, now) {
+async function sendPending(env, now, companies) {
+  if (!companies.size) return 0;
+  const active = [...companies.keys()];
+  const activePlaceholders = active.map(() => "?").join(",");
   // Atomic claim prevents overlapping cron runs from sending the same batch.
   const rows = await env.DB.prepare(
     "UPDATE articles SET lease_until_ms = ? WHERE url IN " +
     "(SELECT url FROM articles WHERE sent_ms IS NULL " +
     "AND (lease_until_ms IS NULL OR lease_until_ms < ?) " +
+    "AND ticker IN (" + activePlaceholders + ") " +
     "ORDER BY pub_ms ASC LIMIT ?) " +
     "RETURNING url, ticker, title"
-  ).bind(now + 120_000, now, MAX_PER_ALERT).all();
+  ).bind(now + 120_000, now, ...active, MAX_PER_ALERT).all();
 
   const claimed = rows.results || [];
   if (!claimed.length) return 0;
@@ -161,35 +166,44 @@ async function sendPending(env, now) {
   }
 }
 
-export async function runNewsCheck(env, scheduledAt = Date.now()) {
+export async function runNewsCheck(env, scheduledAt = Date.now(), deadline = Date.now() + 230000) {
   for (const field of ["DB", "NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]) {
     if (!env[field]) throw new Error("Required Worker binding or secret is missing: " + field);
   }
   const now = Date.now();
+  const companies = await liveWatchlist(env);
+  const state = await env.DB.prepare("SELECT paused FROM bot_runtime WHERE id = 1").first();
   let succeeded = 0;
-  for (const ticker of WATCHLIST) {
+  for (const [ticker, aliases] of companies) {
+    if (Date.now() >= deadline) break;
     try {
-      await pollTopic(env, ticker, now);
+      await pollTopic(env, ticker, aliases, now, state.paused);
       succeeded++;
     } catch (error) {
       console.error("Search failed for " + ticker + ": " + error.message);
     }
   }
-  if (succeeded === 0) throw new Error("All news searches failed; no alert was sent.");
-  const sent = await sendPending(env, now);
+  if (companies.size && succeeded === 0) throw new Error("All news searches failed; no alert was sent.");
+  const sent = state.paused ? 0 : await sendPending(env, now, companies);
+  await env.DB.prepare("UPDATE bot_runtime SET last_checked_ms = ?, last_checked_count = ?, last_sent_count = ? WHERE id = 1").bind(now, succeeded, sent).run();
   // Retain one week of deduplication history, with a light cleanup every 6 hours.
   const triggerDate = new Date(scheduledAt);
   if (triggerDate.getUTCMinutes() === 0 && triggerDate.getUTCHours() % 6 === 0) {
     await env.DB.prepare("DELETE FROM articles WHERE pub_ms < ?")
       .bind(now - 7 * 24 * 60 * 60 * 1000).run();
   }
-  console.log("Checked " + succeeded + "/" + WATCHLIST.length + " tickers. Sent " + sent + " articles.");
+  console.log("Checked " + succeeded + "/" + companies.size + " tickers. Sent " + sent + " articles.");
   return { checked: succeeded, sent };
 }
 
 export default {
   async scheduled(controller, env) {
-    await runNewsCheck(env, controller.scheduledTime);
+    await withBotLock(env, async () => {
+      const deadline = Date.now() + 230000;
+      try { await pollCommands(env); }
+      catch (error) { console.error("Cloud commands: " + error.message); }
+      await runNewsCheck(env, controller.scheduledTime, deadline);
+    });
   },
   async fetch(request) {
     const url = new URL(request.url);
