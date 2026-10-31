@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "deploy": "wrangler deploy",
+    "deploy": "npm run db:migrate && wrangler deploy",
     "db:migrate": "wrangler d1 migrations apply telegram-stock-news-db --remote",
     "test": "node --test"
   },
