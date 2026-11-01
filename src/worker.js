@@ -59,7 +59,7 @@ export function normalizeArticle(item, ticker, now, aliases = ALIASES[ticker] ||
   }
   const description = cleanTitle(item.description);
   if (!newsAllowed(ticker, aliases, title, description)) return null;
-  return { url, ticker, title, publishedAt };
+  return { url, ticker, title, description, publishedAt };
 }
 
 export function escapeTelegramHtml(value) {
@@ -67,14 +67,12 @@ export function escapeTelegramHtml(value) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-export function formatTelegramMessage(rows) {
-  const lines = rows.map((item, index) => {
-    const title = item.title.length > 160 ? item.title.slice(0, 157) + "..." : item.title;
-    return (index + 1) + ". <b>[" + escapeTelegramHtml(item.ticker) + "]</b> "
-      + escapeTelegramHtml(title) + "\n"
-      + '<a href="' + escapeTelegramHtml(item.url) + '">기사 원문 보기</a>';
-  });
-  return lines.join("\n\n");
+export function formatTelegramMessage(item) {
+  const heading = "[" + item.ticker + "] " + item.title.slice(0, 500);
+  // Leave room for the full URL within Telegram's 4096-character text limit.
+  const available = Math.max(0, 4096 - heading.length - item.url.length - 2);
+  const description = (item.description || "").slice(0, Math.min(1500, available));
+  return [heading, description, item.url].filter(Boolean).join("\n");
 }
 
 async function searchNews(env, ticker, aliases) {
@@ -112,9 +110,9 @@ async function pollTopic(env, ticker, aliases, now, paused) {
 
   const writes = articles.map((item) => env.DB.prepare(
     "INSERT OR IGNORE INTO articles " +
-    "(url, ticker, title, pub_ms, discovered_ms, sent_ms, lease_until_ms) " +
-    "VALUES (?, ?, ?, ?, ?, ?, NULL)"
-  ).bind(item.url, item.ticker, item.title, item.publishedAt, now, baseline && !paused ? null : now));
+    "(url, ticker, title, description, pub_ms, discovered_ms, sent_ms, lease_until_ms) " +
+    "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)"
+  ).bind(item.url, item.ticker, item.title, item.description, item.publishedAt, now, baseline && !paused ? null : now));
 
   // For a new ticker, record current search results as seen; don't flood Telegram with old news.
   if (!baseline) {
@@ -136,7 +134,7 @@ async function sendPending(env, now, companies) {
     "AND (lease_until_ms IS NULL OR lease_until_ms < ?) " +
     "AND ticker IN (" + activePlaceholders + ") " +
     "ORDER BY pub_ms ASC LIMIT ?) " +
-    "RETURNING url, ticker, title"
+    "RETURNING url, ticker, title, description"
   ).bind(now + 120_000, now, ...active, MAX_PER_ALERT).all();
 
   const blocked = (rows.results || []).filter(item => blockedNewsSource(item.url));
@@ -149,29 +147,33 @@ async function sendPending(env, now, companies) {
   if (!claimed.length) return 0;
   const links = claimed.map((item) => item.url);
   const placeholders = links.map(() => "?").join(", ");
+  let sent = 0;
   try {
-    const response = await fetch(
-      TELEGRAM_API + "/bot" + env.TELEGRAM_BOT_TOKEN + "/sendMessage",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: env.TELEGRAM_CHAT_ID,
-          text: formatTelegramMessage(claimed),
-          parse_mode: "HTML",
-          link_preview_options: { is_disabled: true },
-        }),
-        signal: AbortSignal.timeout(8000),
+    for (const item of claimed) {
+      if (sent) await new Promise(resolve => setTimeout(resolve, 1100));
+      const response = await fetch(
+        TELEGRAM_API + "/bot" + env.TELEGRAM_BOT_TOKEN + "/sendMessage",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: env.TELEGRAM_CHAT_ID,
+            text: formatTelegramMessage(item),
+            link_preview_options: { is_disabled: false, url: item.url, prefer_large_media: true },
+          }),
+          signal: AbortSignal.timeout(8000),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error("Telegram API status " + response.status + ": " + (data.description || "unknown"));
       }
-    );
-    const data = await response.json();
-    if (!response.ok || !data.ok) {
-      throw new Error("Telegram API status " + response.status + ": " + (data.description || "unknown"));
+      await env.DB.prepare(
+        "UPDATE articles SET sent_ms = ?, lease_until_ms = NULL WHERE url = ?"
+      ).bind(now, item.url).run();
+      sent++;
     }
-    await env.DB.prepare(
-      "UPDATE articles SET sent_ms = ?, lease_until_ms = NULL WHERE url IN (" + placeholders + ")"
-    ).bind(now, ...links).run();
-    return claimed.length;
+    return sent;
   } catch (error) {
     await env.DB.prepare(
       "UPDATE articles SET lease_until_ms = NULL WHERE url IN (" + placeholders + ")"

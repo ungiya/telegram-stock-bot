@@ -7,7 +7,7 @@ import { runNewsCheck } from '../src/worker.js';
 
 function fixture(t, destination = '111') {
   const sql = new DatabaseSync(':memory:');
-  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
+  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
   const DB = {
     prepare(query) {
       const statement = (values = []) => ({
@@ -25,7 +25,7 @@ function fixture(t, destination = '111') {
     },
   };
   const calls = [], replies = [], searches = [];
-  let updates = [], news = [], member = 'member';
+  let updates = [], news = [], member = 'member', failSendAt = 0, sendAttempts = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
     const parsed = new URL(url);
@@ -39,12 +39,16 @@ function fixture(t, destination = '111') {
     if (method === 'getWebhookInfo') result = { url: '' };
     if (method === 'getUpdates') result = updates.filter(u => params.offset < 0 || u.update_id >= params.offset).slice(params.offset < 0 ? -1 : 0, params.offset < 0 ? undefined : params.limit);
     if (method === 'getChatMember') result = { status: member };
-    if (method === 'sendMessage') replies.push(params);
+    if (method === 'sendMessage') {
+      sendAttempts++;
+      if (sendAttempts === failSendAt) return Response.json({ ok: false, description: 'temporary failure' }, { status: 500 });
+      replies.push(params);
+    }
     return Response.json({ ok: true, result });
   };
   t.after(() => { globalThis.fetch = originalFetch; sql.close(); });
   const env = { DB, TELEGRAM_CHAT_ID: destination, TELEGRAM_BOT_TOKEN: 'test-only', NAVER_CLIENT_ID: 'test', NAVER_CLIENT_SECRET: 'test' };
-  return { env, sql, calls, replies, searches, setUpdates: value => { updates = value; }, setNews: value => { news = value; }, setMember: value => { member = value; } };
+  return { env, sql, calls, replies, searches, failSend: attempt => { failSendAt = attempt; }, setUpdates: value => { updates = value; }, setNews: value => { news = value; }, setMember: value => { member = value; } };
 }
 const message = (text, id = 111) => ({ text, from: { id, is_bot: false }, chat: { id, type: 'private' } });
 const command = async (f, name, arg = '', sender = 111) => handleCommand(f.env, message('/' + name + ' ' + arg, sender), { name, arg });
@@ -151,4 +155,36 @@ test('already queued Vegan News is suppressed while other pending news still sen
   assert.match(f.replies[0].text, /허용할 기사/);
   assert.doesNotMatch(f.replies[0].text, /vegannews|차단할 기사/);
   assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url LIKE ?').get('%vegannews%').sent_ms);
+});
+
+test('news summaries survive collection and each article gets its own visible URL preview', async t => {
+  const f = fixture(t);
+  for (const name of (await liveWatchlist(f.env)).keys()) await command(f, 'remove', name);
+  await command(f, 'add', '테스트기업');
+  f.replies.length = 0;
+  await runNewsCheck(f.env);
+  f.setNews([1, 2].map(n => ({ title: '테스트기업 공급 계약 ' + n, description: '<b>테스트기업</b> 계약 내용 &amp; 요약 ' + n,
+    originallink: 'https://example.com/news/' + n, pubDate: new Date().toUTCString() })));
+  assert.equal((await runNewsCheck(f.env)).sent, 2);
+  assert.equal(f.replies.length, 2);
+  for (const reply of f.replies) {
+    assert.match(reply.text, /^\[테스트기업\] 테스트기업 공급 계약 [12]\n테스트기업 계약 내용 & 요약 [12]\nhttps:\/\/example.com\/news\/[12]$/);
+    assert.equal(reply.parse_mode, undefined);
+    assert.equal(reply.link_preview_options.is_disabled, false);
+    assert.ok(reply.text.endsWith(reply.link_preview_options.url));
+  }
+});
+
+test('partial delivery retries remaining articles without resending the first successful article', async t => {
+  const f = fixture(t);
+  const insert = f.sql.prepare('INSERT INTO articles (url,ticker,title,description,pub_ms,discovered_ms) VALUES (?,?,?,?,?,?)');
+  for (let n = 1; n <= 3; n++) insert.run('https://example.com/' + n, '달바글로벌', '기사 ' + n, '요약 ' + n, Date.now() + n, Date.now());
+  f.failSend(2);
+  await assert.rejects(runNewsCheck(f.env), /temporary failure/);
+  assert.equal(f.replies.length, 1);
+  assert.equal(f.sql.prepare('SELECT count(*) AS n FROM articles WHERE sent_ms IS NOT NULL').get().n, 1);
+  assert.equal(f.sql.prepare('SELECT count(*) AS n FROM articles WHERE lease_until_ms IS NOT NULL').get().n, 0);
+  assert.equal((await runNewsCheck(f.env)).sent, 2);
+  assert.equal(f.replies.length, 3);
+  assert.equal(new Set(f.replies.map(r => r.text)).size, 3);
 });

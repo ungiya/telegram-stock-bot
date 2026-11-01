@@ -12,11 +12,10 @@ test("reject unsupported URLs and invalid publication date", () => {
   assert.equal(canonicalUrl("javascript:alert(1)"), null);
   assert.equal(normalizeArticle({ title: "X", originallink: "https://a.com", pubDate: "invalid" }, "A", Date.now()), null);
 });
-test("Telegram message escapes html", () => {
-  const result = formatTelegramMessage([{ ticker: "A&B", title: "<news>", url: "https://example.com/a?x=1&y=2" }]);
-  assert.match(result, /A&amp;B/);
-  assert.match(result, /&lt;news&gt;/);
-  assert.match(result, /x=1&amp;y=2/);
+test("news message contains plain title, summary and full URL without a numbered link label", () => {
+  const result = formatTelegramMessage({ ticker: "A&B", title: "<news>", description: "요약 & 내용", url: "https://example.com/a?x=1&y=2" });
+  assert.equal(result, "[A&B] <news>\n요약 & 내용\nhttps://example.com/a?x=1&y=2");
+  assert.equal(formatTelegramMessage({ ticker: "A", title: "제목", url: "https://example.com" }), "[A] 제목\nhttps://example.com");
 });
 test("escape Telegram HTML", () => {
   assert.equal(escapeTelegramHtml('<a&">'), "&lt;a&amp;&quot;&gt;");
