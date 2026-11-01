@@ -42,7 +42,15 @@ export function canonicalUrl(value) {
   }
 }
 
+export function blockedNewsSource(value) {
+  try {
+    const host = new URL(value).hostname.toLowerCase().replace(/\.$/, "");
+    return host === "vegannews.co.kr" || host.endsWith(".vegannews.co.kr");
+  } catch { return false; }
+}
+
 export function normalizeArticle(item, ticker, now, aliases = ALIASES[ticker] || [ticker]) {
+  if (blockedNewsSource(item.originallink) || blockedNewsSource(item.link)) return null;
   const url = canonicalUrl(item.originallink || item.link);
   const title = cleanTitle(item.title);
   const publishedAt = Date.parse(item.pubDate);
@@ -131,7 +139,13 @@ async function sendPending(env, now, companies) {
     "RETURNING url, ticker, title"
   ).bind(now + 120_000, now, ...active, MAX_PER_ALERT).all();
 
-  const claimed = rows.results || [];
+  const blocked = (rows.results || []).filter(item => blockedNewsSource(item.url));
+  if (blocked.length) {
+    await env.DB.batch(blocked.map(item => env.DB.prepare(
+      "UPDATE articles SET sent_ms = ?, lease_until_ms = NULL WHERE url = ?"
+    ).bind(now, item.url)));
+  }
+  const claimed = (rows.results || []).filter(item => !blockedNewsSource(item.url));
   if (!claimed.length) return 0;
   const links = claimed.map((item) => item.url);
   const placeholders = links.map(() => "?").join(", ");
