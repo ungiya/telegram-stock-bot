@@ -1,3 +1,4 @@
+import { newsPlan } from './news-schedule.js';
 import { ALIASES } from './watchlist.js';
 import { norm } from './filters.js';
 
@@ -64,7 +65,7 @@ export async function handleCommand(env, message, command) {
     reply = '클라우드 관심 종목 ' + companies.size + '개\n' + [...companies.keys()].join('\n');
   } else if (command.name === 'status') {
     const state = await env.DB.prepare('SELECT * FROM bot_runtime WHERE id = 1').first();
-    reply = '클라우드 실행 중 · 검색 주기 1분\n종목: ' + companies.size + '개\n뉴스 전송: ' + (state.paused ? '일시정지' : '켜짐');
+    reply = '클라우드 실행 중 · 뉴스 검색 주기 ' + newsPlan(companies).minutes + '분 (자동)\n종목: ' + companies.size + '개\n뉴스 전송: ' + (state.paused ? '일시정지' : '켜짐');
     if (state.last_checked_ms) reply += '\n최근 검색: ' + new Date(state.last_checked_ms).toISOString() + '\n검색 성공: ' + state.last_checked_count + '개 · 발송: ' + state.last_sent_count + '건';
     const reports = await env.DB.prepare('SELECT last_summary FROM report_runtime WHERE id = 1').first();
     reply += '\n리포트: 매일 08:00 / 18:00 / 23:00 (한국시간)부터 수집\n' + (reports?.last_summary || '첫 수집 대기 중');

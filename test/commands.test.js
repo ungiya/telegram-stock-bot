@@ -7,7 +7,7 @@ import { runNewsCheck } from '../src/worker.js';
 
 function fixture(t, destination = '111') {
   const sql = new DatabaseSync(':memory:');
-  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql', '0005_news_dedup.sql', '0006_dart.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
+  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql', '0005_news_dedup.sql', '0006_dart.sql', '0007_news_schedule.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
   const DB = {
     prepare(query) {
       const statement = (values = []) => ({
@@ -231,4 +231,37 @@ test('old dedup history expires and a failed delivery cannot suppress its retry'
   await assert.rejects(runNewsCheck(f.env), /temporary failure/);
   assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url = ?').get('https://example.com/new').duplicate_of, null);
   assert.equal((await runNewsCheck(f.env)).sent, 1);
+});
+
+test('adaptive pacing persists across restarts and status follows add/remove without delaying commands', async t => {
+  const { claimNewsSearch, newsPlan } = await import('../src/news-schedule.js');
+  const f = fixture(t), now = Date.now(), companies = await liveWatchlist(f.env);
+  assert.equal(newsPlan(companies).queries, 30);
+  assert.equal(newsPlan(companies).minutes, 3);
+  assert.equal(await claimNewsSearch(f.env, companies, now), true);
+  assert.equal(await claimNewsSearch({...f.env}, companies, now + 60000), false);
+  assert.equal(await claimNewsSearch(f.env, companies, now + 180000), true);
+  await command(f, 'status');
+  assert.match(f.replies.at(-1).text, /뉴스 검색 주기 3분/);
+  for (let i=0; i<20; i++) await command(f, 'add', '추가회사'+i);
+  const larger = await liveWatchlist(f.env);
+  assert.equal(newsPlan(larger).minutes, 5);
+  assert.equal(await claimNewsSearch(f.env, larger, now + 360000), false);
+  assert.equal(await claimNewsSearch(f.env, larger, now + 480000), true);
+  for (let i=0; i<20; i++) await command(f, 'remove', '추가회사'+i);
+  await command(f, 'status');
+  assert.match(f.replies.at(-1).text, /뉴스 검색 주기 3분/);
+  assert.equal(await claimNewsSearch(f.env, new Map(), now + 999999), false);
+  for(let count=1;count<=300;count++){
+    const plan=newsPlan(new Map([['test',Array(count).fill('alias')]]));
+    assert.ok(plan.monthlyEstimate <= 620000);
+  }
+});
+test('minute cron keeps polling commands while skipping news before its due time', async t => {
+  const {default: worker} = await import('../src/worker.js');
+  const f = fixture(t);
+  f.sql.prepare('UPDATE news_schedule SET last_attempt_ms = ?').run(Date.now());
+  await worker.scheduled({cron:'* * * * *',scheduledTime:Date.now()}, f.env);
+  assert.equal(f.searches.length, 0);
+  assert.ok(f.calls.some(c=>c.method==='getUpdates'));
 });

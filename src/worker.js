@@ -1,3 +1,4 @@
+import { claimNewsSearch } from "./news-schedule.js";
 import { DART_CRON, runDartCheck } from "./dart.js";
 import { sameNews } from "./news-dedup.js";
 import { REPORT_CRON, runReportCheck } from "./reports.js";
@@ -216,7 +217,7 @@ export async function runNewsCheck(env, scheduledAt = Date.now(), deadline = Dat
   }
   const now = Date.now();
   const companies = await liveWatchlist(env);
-  const state = await env.DB.prepare("SELECT paused FROM bot_runtime WHERE id = 1").first();
+  const state = await env.DB.prepare("SELECT paused, last_checked_ms FROM bot_runtime WHERE id = 1").first();
   let succeeded = 0;
   for (const [ticker, aliases] of companies) {
     if (Date.now() >= deadline) break;
@@ -231,8 +232,7 @@ export async function runNewsCheck(env, scheduledAt = Date.now(), deadline = Dat
   const sent = state.paused ? 0 : await sendPending(env, now, companies);
   await env.DB.prepare("UPDATE bot_runtime SET last_checked_ms = ?, last_checked_count = ?, last_sent_count = ? WHERE id = 1").bind(now, succeeded, sent).run();
   // Retain one week of deduplication history, with a light cleanup every 6 hours.
-  const triggerDate = new Date(scheduledAt);
-  if (triggerDate.getUTCMinutes() === 0 && triggerDate.getUTCHours() % 6 === 0) {
+  if (Math.floor((state.last_checked_ms || 0) / 21600000) !== Math.floor(now / 21600000)) {
     await env.DB.prepare("DELETE FROM articles WHERE pub_ms < ?")
       .bind(now - 7 * 24 * 60 * 60 * 1000).run();
   }
@@ -254,13 +254,14 @@ export default {
       const deadline = Date.now() + 230000;
       try { await pollCommands(env); }
       catch (error) { console.error("Cloud commands: " + error.message); }
-      await runNewsCheck(env, controller.scheduledTime, deadline);
+      const companies = await liveWatchlist(env);
+      if (await claimNewsSearch(env, companies)) await runNewsCheck(env, controller.scheduledTime, deadline);
     });
   },
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
-      return Response.json({ ok: true, purpose: "stock-news-alert", interval: "1 minute" });
+      return Response.json({ ok: true, purpose: "stock-news-alert", interval: "adaptive news; commands and DART every minute" });
     }
     return new Response("Not found", { status: 404 });
   },
