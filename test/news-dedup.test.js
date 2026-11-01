@@ -24,3 +24,26 @@ test('same company alone, short generic titles, or different event facts are not
   assert.equal(sameNews(siemens, { ...otherOutlet, ticker: '다른기업' }), false);
   assert.equal(sameNews({ ...siemens, title: '효성중공업 3분기 영업이익 1000억원' }, { ...siemens, title: '효성중공업 3분기 영업이익 1500억원' }), false);
 });
+
+test('incidental date versus amount does not veto identical press release summaries', () => {
+  const a={ticker:'효성중공업',title:'효성중공업 30일 지멘스와 1000억원 전력망 협약',description:siemens.description};
+  const b={...a,title:'효성중공업 지멘스와 1000억원 전력망 협약 체결'};
+  assert.equal(sameNews(a,b),true);
+});
+test('decimal amounts and quarters protect material follow-ups, including summary-only updates', () => {
+  const a={...siemens,title:'효성중공업 전력망 공급계약 소식',description:'효성중공업은 지멘스와 전력망 장비 공급 계약을 체결했다. 계약 금액은 1.5조원으로 지난해 매출 대비 중요한 규모다.'};
+  const b={...a,title:'효성중공업 전력망 공급계약 발표',description:a.description.replace('1.5조원','1.8조원')};
+  assert.equal(sameNews(a,b),false);
+  assert.equal(sameNews({...a,title:'효성중공업 3분기 실적 발표'}, {...a,title:'효성중공업 4분기 실적 발표'}),false);
+  assert.equal(sameNews({...a,title:'효성중공업 지멘스 1조원 공급계약 체결'}, {...a,title:'효성중공업 지멘스 10,000억원 공급계약 체결'}),true);
+});
+test('same summary and paraphrased title are duplicates but cancellation is a new event', () => {
+  const a={...siemens,title:'효성중공업 지멘스와 전략적 파트너십'};
+  const b={...siemens,title:'효성중공업 지멘스와 맞손, 디지털 전력망 확대'};
+  assert.equal(sameNews(a,b),true);
+  assert.equal(sameNews(a,{...b,title:'효성중공업 지멘스와 전략적 파트너십 해지'}),false);
+});
+test('generic company boilerplate cannot merge stories about different counterparties', () => {
+  const description='효성중공업은 글로벌 전력기기 시장에서 사업을 확대하고 있다. 올해 해외 시장 수요 증가에 대응하며 성장을 이어가고 있다.';
+  assert.equal(sameNews({ticker:'효성중공업',title:'효성중공업 지멘스 전력망 공급계약',description},{ticker:'효성중공업',title:'효성중공업 한전 변압기 공급계약',description}),false);
+});

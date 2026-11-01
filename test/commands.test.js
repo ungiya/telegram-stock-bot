@@ -265,3 +265,16 @@ test('minute cron keeps polling commands while skipping news before its due time
   assert.equal(f.searches.length, 0);
   assert.ok(f.calls.some(c=>c.method==='getUpdates'));
 });
+
+test('paraphrased syndication is suppressed across runs while a cancellation is delivered', async t => {
+  const f=fixture(t), now=Date.now();
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  const description='효성중공업이 독일 지멘스와 디지털 전력망과 인공지능 데이터센터 솔루션 분야에서 협력한다. 글로벌 전략적 파트너십 협약을 체결했다.';
+  insert.run('https://original.example/news','효성중공업','효성중공업 지멘스와 전략적 파트너십',description,now-1000,now);
+  assert.equal((await runNewsCheck(f.env)).sent,1);
+  insert.run('https://copy.example/news','효성중공업','효성중공업 지멘스와 맞손, 디지털 전력망 확대',description,now,now);
+  assert.equal((await runNewsCheck({...f.env})).sent,0);
+  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://copy.example/news').duplicate_of,'https://original.example/news');
+  insert.run('https://update.example/news','효성중공업','효성중공업 지멘스와 전략적 파트너십 해지',description,now+1,now);
+  assert.equal((await runNewsCheck(f.env)).sent,1);
+});
