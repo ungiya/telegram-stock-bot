@@ -55,7 +55,7 @@ export async function authorized(env, message) {
   }
 }
 
-const help = '클라우드 뉴스봇\n/list 목록\n/add 회사명\n/remove 회사명\n/status 상태\n/pause 뉴스·리포트·공시 전송 정지\n/resume 재개\n명령은 매분 확인하므로 응답까지 약 1분 걸릴 수 있습니다.';
+const help = '클라우드 뉴스봇\n/list 목록\n/add 회사명\n/remove 회사명\n/status 상태\n/pause 뉴스·리포트·공시·예비심사 전송 정지\n/resume 재개\n명령은 매분 확인하므로 응답까지 약 1분 걸릴 수 있습니다.';
 
 export async function handleCommand(env, message, command) {
   if (!await authorized(env, message)) return;
@@ -69,11 +69,15 @@ export async function handleCommand(env, message, command) {
     if (state.last_checked_ms) reply += '\n최근 검색: ' + new Date(state.last_checked_ms).toISOString() + '\n검색 성공: ' + state.last_checked_count + '개 · 발송: ' + state.last_sent_count + '건';
     const reports = await env.DB.prepare('SELECT last_summary FROM report_runtime WHERE id = 1').first();
     reply += '\n리포트: 매일 08:00 / 18:00 / 23:00 (한국시간)부터 수집\n' + (reports?.last_summary || '첫 수집 대기 중');
+    const kind = await env.DB.prepare('SELECT last_summary FROM kind_runtime WHERE id = 1').first();
+    reply += '\nKIND 공시·예비심사: ' + (kind?.last_summary || '첫 확인 대기 중');
+    const kindErrors = (await env.DB.prepare('SELECT source,last_error FROM kind_sources WHERE last_error IS NOT NULL').all()).results || [];
+    for (const row of kindErrors) reply += '\nKIND 오류: ' + row.source + ' · ' + row.last_error;
     const dart = await env.DB.prepare('SELECT last_summary FROM dart_runtime WHERE id = 1').first();
     reply += '\n공시: ' + (env.DART_API_KEY ? (dart?.last_summary || '인증키 등록됨 · 첫 확인 대기 중') : 'DART_API_KEY 등록 대기');
   } else if (command.name === 'pause' || command.name === 'resume') {
     await env.DB.prepare('UPDATE bot_runtime SET paused = ? WHERE id = 1').bind(command.name === 'pause' ? 1 : 0).run();
-    reply = command.name === 'pause' ? '뉴스·리포트·공시 전송을 일시정지했습니다. 검색은 계속합니다. /resume 재개' : '뉴스·리포트·공시 전송을 재개했습니다.';
+    reply = command.name === 'pause' ? '뉴스·리포트·공시·예비심사 전송을 일시정지했습니다. 검색은 계속합니다. /resume 재개' : '뉴스·리포트·공시·예비심사 전송을 재개했습니다.';
   } else if (command.name === 'add' || command.name === 'remove') {
     if (!command.arg || command.arg.length > 80 || !norm(command.arg) || /[\r\n\x00-\x1f]/.test(command.arg)) {
       reply = '사용법: /' + command.name + ' 회사명 (한 번에 한 종목, 80자 이내)';
@@ -92,6 +96,8 @@ export async function handleCommand(env, message, command) {
           writes.push(env.DB.prepare('UPDATE report_alerts SET sent_ms = ? WHERE ticker = ? AND sent_ms IS NULL').bind(Date.now(), key));
           writes.push(env.DB.prepare('UPDATE report_items SET processed = 1 WHERE ticker = ? AND processed = 0').bind(key));
           writes.push(env.DB.prepare('UPDATE dart_filings SET sent_ms = ? WHERE ticker = ? AND sent_ms IS NULL').bind(Date.now(), key));
+          writes.push(env.DB.prepare('UPDATE kind_items SET sent_ms = ? WHERE ticker = ? AND sent_ms IS NULL').bind(Date.now(), key));
+          writes.push(env.DB.prepare('DELETE FROM kind_topics WHERE ticker = ?').bind(key));
           writes.push(env.DB.prepare('DELETE FROM dart_topics WHERE ticker = ?').bind(key));
           writes.push(env.DB.prepare('DELETE FROM topic_state WHERE ticker = ?').bind(key));
         }

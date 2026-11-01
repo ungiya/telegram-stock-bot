@@ -1,3 +1,4 @@
+import { KIND_CRON, runKindCheck } from "./kind.js";
 import { claimNewsSearch } from "./news-schedule.js";
 import { DART_CRON, runDartCheck } from "./dart.js";
 import { sameNews } from "./news-dedup.js";
@@ -242,6 +243,7 @@ export async function runNewsCheck(env, scheduledAt = Date.now(), deadline = Dat
 
 export default {
   async scheduled(controller, env) {
+    if (controller.cron === KIND_CRON) { await runKindCheck(env, controller.scheduledTime); return; }
     if (controller.cron === DART_CRON) {
       await runDartCheck(env);
       return;
