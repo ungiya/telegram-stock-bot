@@ -60,14 +60,13 @@ export function escapeTelegramHtml(value) {
 }
 
 export function formatTelegramMessage(rows) {
-  const header = "🗞️ <b>관심 종목 신규 뉴스 " + rows.length + "건</b>";
   const lines = rows.map((item, index) => {
     const title = item.title.length > 160 ? item.title.slice(0, 157) + "..." : item.title;
     return (index + 1) + ". <b>[" + escapeTelegramHtml(item.ticker) + "]</b> "
       + escapeTelegramHtml(title) + "\n"
       + '<a href="' + escapeTelegramHtml(item.url) + '">기사 원문 보기</a>';
   });
-  return [header, ...lines].join("\n\n");
+  return lines.join("\n\n");
 }
 
 async function searchNews(env, ticker, aliases) {
