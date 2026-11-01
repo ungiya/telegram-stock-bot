@@ -46,7 +46,7 @@ export function canonicalUrl(value) {
 export function blockedNewsSource(value) {
   try {
     const host = new URL(value).hostname.toLowerCase().replace(/\.$/, "");
-    return host === "vegannews.co.kr" || host.endsWith(".vegannews.co.kr");
+    return ["vegannews.co.kr", "insight.co.kr"].some(domain => host === domain || host.endsWith("." + domain));
   } catch { return false; }
 }
 
