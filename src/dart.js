@@ -45,7 +45,10 @@ async function page(env, pageNo, now) {
   // Follow only HTTPS redirects back to this exact official API endpoint.
   // Never forward the API key to a login/error page or a different origin.
   for (let redirects = 0; ; redirects++) {
-    try { response = await fetch(target, { signal: deadline, redirect: 'manual', headers: { Accept: 'application/json' } }); }
+    try { response = await fetch(target.toString(), {
+      method: 'GET', signal: deadline, redirect: 'manual',
+      headers: { Accept: 'application/json', 'User-Agent': 'telegram-stock-news-alert/1.0 (OpenDART client)' },
+    }); }
     catch { throw new Error('DART network request failed'); }
     if (![301, 302, 303, 307, 308].includes(response.status)) break;
     const location = response.headers.get('Location');

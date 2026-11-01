@@ -23,6 +23,10 @@ function fixture(t) {
       // Match Workers, which rejects redirect:error before making any network request.
       if (!['manual', 'follow'].includes(options.redirect)) throw new TypeError('Unsupported redirect mode');
       assert.equal(options.redirect, 'manual');
+      assert.equal(typeof url, 'string');
+      assert.equal(options.method, 'GET');
+      assert.match(options.headers['User-Agent'], /telegram-stock-news-alert/);
+      assert.equal(options.headers.Accept, 'application/json');
       queries.push(parsed);
       if (hook) await hook();
       if (redirects.length) return new Response(null, { status: 302, headers: { Location: redirects.shift() } });
