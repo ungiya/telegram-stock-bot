@@ -68,3 +68,14 @@ test("exclude Metro news originals, mobile and legacy domains", () => {
   assert.equal(blockedNewsSource('https://metroseoul.co.kr.example.com/article/1'), false);
   assert.equal(blockedNewsSource('https://example.com/emetro.co.kr'), false);
 });
+
+test("exclude Fourth Journal originals and subdomains while retaining unrelated domains", () => {
+  const now = Date.now();
+  const article = { title: '크래프톤 신작 공개', pubDate: new Date(now).toUTCString(),
+    originallink: 'https://www.4th.kr/news/articleView.html?idxno=1', link: 'https://n.news.naver.com/article/1' };
+  assert.equal(normalizeArticle(article, '크래프톤', now), null);
+  assert.equal(normalizeArticle({ ...article, originallink: '', link: 'https://m.4th.kr/news/1' }, '크래프톤', now), null);
+  assert.equal(blockedNewsSource('https://4TH.KR./news/1'), true);
+  assert.equal(blockedNewsSource('https://4th.kr.example.com/news/1'), false);
+  assert.equal(blockedNewsSource('https://example.com/4th.kr'), false);
+});
