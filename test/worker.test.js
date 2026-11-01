@@ -79,3 +79,18 @@ test("exclude Fourth Journal originals and subdomains while retaining unrelated 
   assert.equal(blockedNewsSource('https://4th.kr.example.com/news/1'), false);
   assert.equal(blockedNewsSource('https://example.com/4th.kr'), false);
 });
+
+test("Naver errors distinguish gateway throttling and daily quota without exposing response details", async () => {
+  const { naverError } = await import("../src/worker.js");
+  for (const [data, expected] of [
+    [{error:{errorCode:"410",message:"secret"}}, /code 410 \(throttle limited\)/],
+    [{errorCode:"429",errorMessage:"secret"}, /code 429 \(daily quota exceeded\)/],
+    [{error:{errorCode:"420"}}, /code 420 \(rate limited\)/],
+    [{errorCode:"https://private.example/secret"}, /code unknown/]
+  ]) {
+    const error = await naverError(Response.json(data, {status:429}));
+    assert.match(error.message, expected);
+    assert.doesNotMatch(error.message, /secret|private/);
+  }
+  assert.match((await naverError(new Response("not json", {status:503}))).message, /status 503 · code unknown/);
+});

@@ -77,6 +77,16 @@ export function formatTelegramMessage(item) {
   return [heading, description, item.url].filter(Boolean).join("\n");
 }
 
+export async function naverError(response) {
+  let data;
+  try { data = await response.json(); } catch { data = {}; }
+  const raw = data?.error?.errorCode ?? data?.errorCode;
+  const code = /^[A-Za-z0-9_-]{1,12}$/.test(String(raw)) ? String(raw) : "unknown";
+  const meanings = { "400": "quota exceeded", "410": "throttle limited", "420": "rate limited", "429": "daily quota exceeded" };
+  return new Error("Naver news API status " + response.status + " · code " + code
+    + (response.status === 429 && meanings[code] ? " (" + meanings[code] + ")" : ""));
+}
+
 async function searchNews(env, ticker, aliases) {
   const items = [];
   for (const query of aliases) {
@@ -92,7 +102,7 @@ async function searchNews(env, ticker, aliases) {
     },
     signal: AbortSignal.timeout(8000),
   });
-  if (!response.ok) throw new Error("Naver news API status " + response.status);
+  if (!response.ok) throw await naverError(response);
   const payload = await response.json();
   if (!Array.isArray(payload.items)) throw new Error("Invalid Naver news response");
   items.push(...payload.items);
