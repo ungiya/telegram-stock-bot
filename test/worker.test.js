@@ -55,3 +55,16 @@ test("exclude Pinpoint News originals, syndication and subdomains", () => {
   assert.equal(blockedNewsSource('https://pinpointnews.co.kr.example.com/news/1'), false);
   assert.equal(blockedNewsSource('https://example.com/pinpointnews.co.kr'), false);
 });
+
+test("exclude Metro news originals, mobile and legacy domains", () => {
+  const now = Date.now();
+  const article = { title: '크래프톤 신작 공개', pubDate: new Date(now).toUTCString(),
+    originallink: 'https://www.metroseoul.co.kr/article/1', link: 'https://n.news.naver.com/article/1' };
+  assert.equal(normalizeArticle(article, '크래프톤', now), null);
+  for (const host of ['metroseoul.co.kr', 'm.metroseoul.co.kr', 'emetro.co.kr', 'oauth.emetro.co.kr']) {
+    assert.equal(normalizeArticle({ ...article, originallink: '', link: 'https://' + host + '/article/1' }, '크래프톤', now), null);
+  }
+  assert.equal(blockedNewsSource('https://METROSEOUL.CO.KR./article/1'), true);
+  assert.equal(blockedNewsSource('https://metroseoul.co.kr.example.com/article/1'), false);
+  assert.equal(blockedNewsSource('https://example.com/emetro.co.kr'), false);
+});
