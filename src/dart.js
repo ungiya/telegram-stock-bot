@@ -40,7 +40,8 @@ async function page(env, pageNo, now) {
     end_de: kstDate(now), last_reprt_at: 'N', sort: 'date', sort_mth: 'desc', page_count: '100', page_no: String(pageNo) });
   let response;
   // Do not expose request URLs/errors: the query string contains the authentication key.
-  try { response = await fetch(url, { signal: AbortSignal.timeout(10000), redirect: 'error' }); }
+  // Workers supports manual/follow only; manual also prevents forwarding the key on redirects.
+  try { response = await fetch(url, { signal: AbortSignal.timeout(10000), redirect: 'manual' }); }
   catch { throw new Error('DART network request failed'); }
   if (!response.ok) throw new Error('DART HTTP status ' + response.status);
   let data;

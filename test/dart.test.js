@@ -20,9 +20,13 @@ function fixture(t) {
   globalThis.fetch = async (url, options) => {
     const parsed = new URL(url);
     if (parsed.hostname === 'opendart.fss.or.kr') {
+      // Match Workers, which rejects redirect:error before making any network request.
+      if (!['manual', 'follow'].includes(options.redirect)) throw new TypeError('Unsupported redirect mode');
+      assert.equal(options.redirect, 'manual');
       queries.push(parsed);
       if (hook) await hook();
       if (failure === 'network') throw new Error('sensitive URL ' + url);
+      if (failure === 'redirect') return new Response(null, { status: 302, headers: { Location: 'https://example.com/blocked' } });
       if (failure) return Response.json({ status: failure });
       const number = Number(parsed.searchParams.get('page_no'));
       return Response.json({ status: '000', total_page: pages.length, list: pages[number - 1] || [] });
@@ -149,4 +153,13 @@ test('status reports key registration and collection state without exposing cred
   assert.doesNotMatch(f.replies.at(-1).text, /test-dart-secret|test-bot-secret/);
   await handleCommand({ ...f.env, DART_API_KEY: undefined }, dm('/status'), { name: 'status', arg: '' });
   assert.match(f.replies.at(-1).text, /DART_API_KEY 등록 대기/);
+});
+
+test('DART redirects are not followed and do not expose the key in errors', async t => {
+  const f = fixture(t); f.fail('redirect');
+  await assert.rejects(runDartCheck(f.env, NOW), /DART HTTP status 302/);
+  assert.equal(f.queries.length, 1);
+  assert.equal(f.replies.length, 0);
+  assert.doesNotMatch(f.sql.prepare('SELECT last_summary FROM dart_runtime').get().last_summary, /test-dart-secret|example.com/);
+  assert.equal(f.sql.prepare('SELECT count(*) AS n FROM dart_topics WHERE initialized_at IS NOT NULL').get().n, 0);
 });
