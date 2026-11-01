@@ -36,13 +36,36 @@ export function formatDartMessage(item) {
 }
 async function page(env, pageNo, now) {
   const url = new URL(API);
-  url.search = new URLSearchParams({ crtfc_key: env.DART_API_KEY, bgn_de: kstDate(now - 86400000),
+  url.search = new URLSearchParams({ crtfc_key: String(env.DART_API_KEY).trim(), bgn_de: kstDate(now - 86400000),
     end_de: kstDate(now), last_reprt_at: 'N', sort: 'date', sort_mth: 'desc', page_count: '100', page_no: String(pageNo) });
   let response;
-  // Do not expose request URLs/errors: the query string contains the authentication key.
-  // Workers supports manual/follow only; manual also prevents forwarding the key on redirects.
-  try { response = await fetch(url, { signal: AbortSignal.timeout(10000), redirect: 'manual' }); }
-  catch { throw new Error('DART network request failed'); }
+  const deadline = AbortSignal.timeout(10000);
+  const originalQuery = url.search;
+  let target = url;
+  // Follow only HTTPS redirects back to this exact official API endpoint.
+  // Never forward the API key to a login/error page or a different origin.
+  for (let redirects = 0; ; redirects++) {
+    try { response = await fetch(target, { signal: deadline, redirect: 'manual', headers: { Accept: 'application/json' } }); }
+    catch { throw new Error('DART network request failed'); }
+    if (![301, 302, 303, 307, 308].includes(response.status)) break;
+    const location = response.headers.get('Location');
+    let next;
+    try { next = new URL(location || '', target); } catch { /* Report only a redacted destination below. */ }
+    const safe = next && next.origin === url.origin && next.pathname === url.pathname && !next.username && !next.password;
+    if (!location || !safe) {
+      // Exclude queries, credentials and reflected secret values from diagnostics.
+      const key = String(env.DART_API_KEY).trim();
+      const destination = next ? (next.protocol + '//' + next.hostname + next.pathname)
+        .split(key).join('[redacted]').split(encodeURIComponent(key)).join('[redacted]')
+        .replace(/[a-z0-9_-]{24,}/gi, '[redacted]').replace(/[\r\n]/g, '').slice(0, 180) : '(invalid location)';
+      throw new Error('DART HTTP ' + response.status + ' redirect outside API: ' + destination);
+    }
+    if (redirects >= 2) throw new Error('DART redirect limit exceeded');
+    next.search = originalQuery;
+    next.hash = '';
+    await response.body?.cancel();
+    target = next;
+  }
   if (!response.ok) throw new Error('DART HTTP status ' + response.status);
   let data;
   try { data = await response.json(); } catch { throw new Error('DART invalid JSON response'); }

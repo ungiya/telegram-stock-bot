@@ -16,7 +16,7 @@ function fixture(t) {
     return statement();
   }, async batch(statements) { sql.exec('BEGIN'); try { const result = []; for (const statement of statements) result.push(await statement.run()); sql.exec('COMMIT'); return result; } catch (e) { sql.exec('ROLLBACK'); throw e; } } };
   const original = globalThis.fetch, replies = [], queries = [];
-  let pages = [[]], failure = '', sendFailure = false, hook;
+  let pages = [[]], failure = '', sendFailure = false, hook, redirects = [];
   globalThis.fetch = async (url, options) => {
     const parsed = new URL(url);
     if (parsed.hostname === 'opendart.fss.or.kr') {
@@ -25,6 +25,7 @@ function fixture(t) {
       assert.equal(options.redirect, 'manual');
       queries.push(parsed);
       if (hook) await hook();
+      if (redirects.length) return new Response(null, { status: 302, headers: { Location: redirects.shift() } });
       if (failure === 'network') throw new Error('sensitive URL ' + url);
       if (failure === 'redirect') return new Response(null, { status: 302, headers: { Location: 'https://example.com/blocked' } });
       if (failure) return Response.json({ status: failure });
@@ -39,7 +40,7 @@ function fixture(t) {
   };
   t.after(() => { globalThis.fetch = original; sql.close(); });
   return { sql, replies, queries, env: { DB, DART_API_KEY: 'test-dart-secret', TELEGRAM_BOT_TOKEN: 'test-bot-secret', TELEGRAM_CHAT_ID: '111' },
-    setPages: value => { pages = value; }, fail: value => { failure = value; }, failSend: value => { sendFailure = value; }, setHook: value => { hook = value; } };
+    setRedirects: value => { redirects = value; }, setPages: value => { pages = value; }, fail: value => { failure = value; }, failSend: value => { sendFailure = value; }, setHook: value => { hook = value; } };
 }
 const NOW = Date.parse('2026-11-02T01:00:00Z');
 const filing = (id, report = '단일판매ㆍ공급계약체결', name = '효성중공업') => ({ corp_name: name, rcept_no: id, rcept_dt: '20261102', report_nm: report });
@@ -157,9 +158,40 @@ test('status reports key registration and collection state without exposing cred
 
 test('DART redirects are not followed and do not expose the key in errors', async t => {
   const f = fixture(t); f.fail('redirect');
-  await assert.rejects(runDartCheck(f.env, NOW), /DART HTTP status 302/);
+  await assert.rejects(runDartCheck(f.env, NOW), /DART HTTP 302 redirect outside API/);
   assert.equal(f.queries.length, 1);
   assert.equal(f.replies.length, 0);
-  assert.doesNotMatch(f.sql.prepare('SELECT last_summary FROM dart_runtime').get().last_summary, /test-dart-secret|example.com/);
+  assert.doesNotMatch(f.sql.prepare('SELECT last_summary FROM dart_runtime').get().last_summary, /test-dart-secret/);
+  assert.equal(f.sql.prepare('SELECT count(*) AS n FROM dart_topics WHERE initialized_at IS NOT NULL').get().n, 0);
+});
+
+test('same-endpoint HTTPS redirects retain the original key and query and complete successfully', async t => {
+  const f = fixture(t); f.setPages([[old]]);
+  f.setRedirects(['/api/list.json?crtfc_key=wrong&page_count=1']);
+  assert.equal((await runDartCheck(f.env, NOW)).complete, true);
+  assert.equal(f.queries.length, 2);
+  assert.equal(f.queries[1].searchParams.get('crtfc_key'), 'test-dart-secret');
+  assert.equal(f.queries[1].searchParams.get('page_count'), '100');
+});
+test('login/error redirects report the destination without following it or exposing the key', async t => {
+  const f = fixture(t);
+  f.setRedirects(['/error.do?crtfc_key=test-dart-secret']);
+  await assert.rejects(runDartCheck(f.env, NOW), /redirect outside API: https:\/\/opendart.fss.or.kr\/error.do/);
+  assert.equal(f.queries.length, 1);
+  assert.doesNotMatch(f.sql.prepare('SELECT last_summary FROM dart_runtime').get().last_summary, /test-dart-secret|crtfc_key/);
+});
+test('HTTPS downgrade, credentials and reflected keys are never followed or logged', async t => {
+  const f = fixture(t);
+  for (const destination of ['http://opendart.fss.or.kr/api/list.json', 'https://user:pass@opendart.fss.or.kr/api/list.json', 'https://test-dart-secret.example.com/test-dart-secret?key=test-dart-secret']) {
+    f.setRedirects([destination]);
+    await assert.rejects(runDartCheck(f.env, NOW), /redirect outside API/);
+    assert.doesNotMatch(f.sql.prepare('SELECT last_summary FROM dart_runtime').get().last_summary, /test-dart-secret|user:pass/);
+  }
+  assert.equal(f.queries.length, 3);
+});
+test('redirect loops are bounded and leave subscriptions uninitialized', async t => {
+  const f = fixture(t); f.setRedirects(['/api/list.json', '/api/list.json', '/api/list.json']);
+  await assert.rejects(runDartCheck(f.env, NOW), /redirect limit exceeded/);
+  assert.equal(f.queries.length, 3);
   assert.equal(f.sql.prepare('SELECT count(*) AS n FROM dart_topics WHERE initialized_at IS NOT NULL').get().n, 0);
 });
