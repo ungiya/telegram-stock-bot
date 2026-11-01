@@ -1,3 +1,4 @@
+import { DART_CRON, runDartCheck } from "./dart.js";
 import { sameNews } from "./news-dedup.js";
 import { REPORT_CRON, runReportCheck } from "./reports.js";
 import { liveWatchlist, pollCommands, withBotLock } from "./commands.js";
@@ -231,6 +232,10 @@ export async function runNewsCheck(env, scheduledAt = Date.now(), deadline = Dat
 
 export default {
   async scheduled(controller, env) {
+    if (controller.cron === DART_CRON) {
+      await runDartCheck(env);
+      return;
+    }
     if (controller.cron === REPORT_CRON) {
       await runReportCheck(env, controller.scheduledTime);
       return;

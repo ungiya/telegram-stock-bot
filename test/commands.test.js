@@ -7,7 +7,7 @@ import { runNewsCheck } from '../src/worker.js';
 
 function fixture(t, destination = '111') {
   const sql = new DatabaseSync(':memory:');
-  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql', '0005_news_dedup.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
+  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql', '0005_news_dedup.sql', '0006_dart.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
   const DB = {
     prepare(query) {
       const statement = (values = []) => ({
