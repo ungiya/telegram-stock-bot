@@ -1,3 +1,4 @@
+import { sameNews } from "./news-dedup.js";
 import { REPORT_CRON, runReportCheck } from "./reports.js";
 import { liveWatchlist, pollCommands, withBotLock } from "./commands.js";
 import { newsAllowed } from "./filters.js";
@@ -134,7 +135,7 @@ async function sendPending(env, now, companies) {
     "AND (lease_until_ms IS NULL OR lease_until_ms < ?) " +
     "AND ticker IN (" + activePlaceholders + ") " +
     "ORDER BY pub_ms ASC LIMIT ?) " +
-    "RETURNING url, ticker, title, description"
+    "RETURNING url, ticker, title, description, pub_ms"
   ).bind(now + 120_000, now, ...active, MAX_PER_ALERT).all();
 
   const blocked = (rows.results || []).filter(item => blockedNewsSource(item.url));
@@ -143,13 +144,28 @@ async function sendPending(env, now, companies) {
       "UPDATE articles SET sent_ms = ?, lease_until_ms = NULL WHERE url = ?"
     ).bind(now, item.url)));
   }
-  const claimed = (rows.results || []).filter(item => !blockedNewsSource(item.url));
+  const claimed = (rows.results || []).filter(item => !blockedNewsSource(item.url))
+    .sort((a, b) => a.pub_ms - b.pub_ms || a.url.localeCompare(b.url));
   if (!claimed.length) return 0;
   const links = claimed.map((item) => item.url);
   const placeholders = links.map(() => "?").join(", ");
   let sent = 0;
   try {
+    // Durable history also covers other outlets arriving on later cron runs.
+    // Suppressed copies cannot become representatives and cause similarity chains.
+    const history = (await env.DB.prepare(
+      "SELECT url, ticker, title, description FROM articles " +
+      "WHERE sent_ms IS NOT NULL AND duplicate_of IS NULL AND pub_ms >= ? " +
+      "AND ticker IN (" + activePlaceholders + ") ORDER BY pub_ms DESC LIMIT 2000"
+    ).bind(now - 72 * 60 * 60 * 1000, ...active).all()).results || [];
     for (const item of claimed) {
+      const duplicate = history.find(previous => sameNews(item, previous));
+      if (duplicate) {
+        await env.DB.prepare(
+          "UPDATE articles SET sent_ms = ?, duplicate_of = ?, lease_until_ms = NULL WHERE url = ?"
+        ).bind(now, duplicate.url, item.url).run();
+        continue;
+      }
       if (sent) await new Promise(resolve => setTimeout(resolve, 1100));
       const response = await fetch(
         TELEGRAM_API + "/bot" + env.TELEGRAM_BOT_TOKEN + "/sendMessage",
@@ -172,6 +188,7 @@ async function sendPending(env, now, companies) {
         "UPDATE articles SET sent_ms = ?, lease_until_ms = NULL WHERE url = ?"
       ).bind(now, item.url).run();
       sent++;
+      history.push(item);
     }
     return sent;
   } catch (error) {
