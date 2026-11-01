@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
-import { DART_CRON, runDartCheck, matchDartCompany, normalizeFiling, kstDate } from '../src/dart.js';
+import { DART_CRON, diagnoseDartRequest, runDartCheck, matchDartCompany, normalizeFiling, kstDate } from '../src/dart.js';
 import { handleCommand } from '../src/commands.js';
 import worker from '../src/worker.js';
 
@@ -198,4 +198,25 @@ test('redirect loops are bounded and leave subscriptions uninitialized', async t
   await assert.rejects(runDartCheck(f.env, NOW), /redirect limit exceeded/);
   assert.equal(f.queries.length, 3);
   assert.equal(f.sql.prepare('SELECT count(*) AS n FROM dart_topics WHERE initialized_at IS NOT NULL').get().n, 0);
+});
+
+test('error1 triggers one minimal control request without advancing baseline or sending', async t => {
+  const f = fixture(t);
+  f.setRedirects(['/error1.html']);
+  await assert.rejects(runDartCheck(f.env, NOW), /최소 요청 정상.*검색 조건을 포함한 요청만 실패/);
+  assert.equal(f.queries.length, 2);
+  assert.deepEqual([...f.queries[1].searchParams.keys()], ['crtfc_key', 'page_count']);
+  assert.equal(f.queries[1].searchParams.get('page_count'), '1');
+  assert.equal(f.sql.prepare('SELECT count(*) AS n FROM dart_topics WHERE initialized_at IS NOT NULL').get().n, 0);
+  assert.equal(f.replies.length, 0);
+  f.setRedirects(['/error1.html', 'https://example.com/?secret=never-follow']);
+  await assert.rejects(runDartCheck(f.env, NOW + 60000), /최소 요청도 HTTP 302/);
+  assert.equal(f.queries.length, 4);
+});
+test('control request reports API codes and never exposes bodies, keys or network errors', async t => {
+  const f = fixture(t);
+  f.fail('013'); assert.match(await diagnoseDartRequest(f.env), /최소 요청 정상/);
+  f.fail('010'); assert.equal(await diagnoseDartRequest(f.env), '최소 요청 API 010');
+  f.fail('sensitive-test-secret'); assert.equal(await diagnoseDartRequest(f.env), '최소 요청 API unknown');
+  f.fail('network'); assert.equal(await diagnoseDartRequest(f.env), '최소 요청도 연결 또는 응답 해석 실패');
 });

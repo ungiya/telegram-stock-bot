@@ -78,6 +78,28 @@ async function page(env, pageNo, now) {
   return { rows: data.list, total: Number(data.total_page) };
 }
 
+// A single control request distinguishes query-specific failures from a failure
+// of even the browser-equivalent API request. Never follow its redirect or use
+// its rows as a baseline: its default date range differs from the collector.
+export async function diagnoseDartRequest(env) {
+  const url = new URL(API);
+  url.search = new URLSearchParams({ crtfc_key: String(env.DART_API_KEY).trim(), page_count: '1' });
+  try {
+    const response = await fetch(url.toString(), {
+      method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(5000),
+      headers: { Accept: 'application/json', 'User-Agent': 'telegram-stock-news-alert/1.0 (OpenDART client)' },
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return '최소 요청도 HTTP ' + response.status + ' (실행 환경의 API 연결 확인 필요)';
+    }
+    const data = await response.json();
+    const status = /^\d{3}$/.test(String(data.status)) ? String(data.status) : 'unknown';
+    if (status === '000' || status === '013') return '최소 요청 정상(API ' + status + '), 검색 조건을 포함한 요청만 실패';
+    return '최소 요청 API ' + status;
+  } catch { return '최소 요청도 연결 또는 응답 해석 실패'; }
+}
+
 async function collect(env, companies, now, state) {
   const topics = (await env.DB.prepare('SELECT ticker, initialized_at FROM dart_topics').all()).results || [];
   const ready = new Set(topics.filter(row => row.initialized_at !== null).map(row => row.ticker));
@@ -154,6 +176,9 @@ export async function runDartCheck(env, now = Date.now()) {
     console.log(summary);
     return { enabled: true, sent, ...collected };
   } catch (error) {
+    if (error.message === 'DART HTTP 302 redirect outside API: https://opendart.fss.or.kr/error1.html') {
+      error = new Error(error.message + ' · ' + await diagnoseDartRequest(env));
+    }
     await env.DB.prepare('UPDATE dart_runtime SET last_summary = ? WHERE id = 1').bind('DART 오류: ' + error.message).run();
     throw error;
   } finally {
