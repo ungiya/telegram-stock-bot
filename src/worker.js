@@ -81,7 +81,7 @@ export async function naverError(response) {
   let data;
   try { data = await response.json(); } catch { data = {}; }
   const raw = data?.error?.errorCode ?? data?.errorCode;
-  const code = /^[A-Za-z0-9_-]{1,12}$/.test(String(raw)) ? String(raw) : "unknown";
+  const code = raw != null && /^[A-Za-z0-9_-]{1,12}$/.test(String(raw)) ? String(raw) : "unknown";
   const meanings = { "400": "quota exceeded", "410": "throttle limited", "420": "rate limited", "429": "daily quota exceeded" };
   return new Error("Naver news API status " + response.status + " · code " + code
     + (response.status === 429 && meanings[code] ? " (" + meanings[code] + ")" : ""));
