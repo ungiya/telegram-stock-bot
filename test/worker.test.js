@@ -44,3 +44,14 @@ test("exclude Insight originals and subdomains without blocking other publishers
   assert.equal(blockedNewsSource('https://insight.co.kr.example.com/news/1'), false);
   assert.equal(blockedNewsSource('https://www.insightkorea.co.kr/news/1'), false);
 });
+
+test("exclude Pinpoint News originals, syndication and subdomains", () => {
+  const now = Date.now();
+  const article = { title: '크래프톤 신작 공개', pubDate: new Date(now).toUTCString(),
+    originallink: 'https://www.pinpointnews.co.kr/news/articleView.html?idxno=1', link: 'https://n.news.naver.com/article/1' };
+  assert.equal(normalizeArticle(article, '크래프톤', now), null);
+  assert.equal(normalizeArticle({ ...article, originallink: '', link: 'https://m.pinpointnews.co.kr/news/1' }, '크래프톤', now), null);
+  assert.equal(blockedNewsSource('https://PINPOINTNEWS.CO.KR./news/1'), true);
+  assert.equal(blockedNewsSource('https://pinpointnews.co.kr.example.com/news/1'), false);
+  assert.equal(blockedNewsSource('https://example.com/pinpointnews.co.kr'), false);
+});

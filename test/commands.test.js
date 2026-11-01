@@ -149,6 +149,7 @@ test('already queued blocked outlets are suppressed while other pending news sti
   const insert = f.sql.prepare('INSERT INTO articles (url,ticker,title,pub_ms,discovered_ms) VALUES (?,?,?,?,?)');
   insert.run('https://www.vegannews.co.kr/news/article.html?no=1', '달바글로벌', '차단할 기사', Date.now(), Date.now());
   insert.run('https://www.insight.co.kr/news/1', '달바글로벌', '인사이트 차단 기사', Date.now(), Date.now());
+  insert.run('https://www.pinpointnews.co.kr/news/articleView.html?idxno=1', '달바글로벌', '핀포인트 차단 기사', Date.now(), Date.now());
   insert.run('https://example.com/allowed', '달바글로벌', '허용할 기사', Date.now(), Date.now());
   const result = await runNewsCheck(f.env);
   assert.equal(result.sent, 1);
@@ -157,6 +158,7 @@ test('already queued blocked outlets are suppressed while other pending news sti
   assert.doesNotMatch(f.replies[0].text, /vegannews|insight\.co\.kr|차단할 기사|인사이트 차단 기사/);
   assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url LIKE ?').get('%vegannews%').sent_ms);
   assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url LIKE ?').get('%insight.co.kr%').sent_ms);
+  assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url LIKE ?').get('%pinpointnews.co.kr%').sent_ms);
 });
 
 test('news summaries survive collection and each article gets its own visible URL preview', async t => {
