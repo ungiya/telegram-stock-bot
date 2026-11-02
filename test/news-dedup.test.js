@@ -103,3 +103,30 @@ test('short excerpt contained in a longer release is duplicate only with matchin
  assert.equal(sameNews(a,b),true);
  assert.equal(sameNews(a,{...b,title:'에이피알 텍사스 매장에 새 브랜드 입점'}),false);
 });
+
+
+test('reported Kiff launch repeated press release is suppressed across outlets and URL variants', async () => {
+ const {coveredNewsEvent,reportedKiffLaunch}=await import('../src/news-dedup.js');
+ const now=Date.parse('2026-11-02T17:00:00+09:00');
+ const base={ticker:'크래프톤',pub_ms:now,description:'크래프톤이 K팝 아티스트가 만든 캐릭터 챗 Kiff를 국내에 상용화했다.'};
+ const headlines=[
+  "크래프톤, AI 캐릭터 챗 'Kiff' 서비스 개시…K팝 인공지능 사업 확장",
+  "크래프톤, K팝 AI 캐릭터 챗 서비스 '키프' 선보여",
+  "크래프톤, K팝 AI 캐릭터 챗 서비스 키프 국내 서비스 시작",
+  "크래프톤, AI 캐릭터 채팅 시장 참전…'키프(Kiff)' 출시",
+  "크래프톤, K팝 AI 챗 키프 국내 서비스 시작"
+ ];
+ for(const title of headlines) {
+  assert.equal(coveredNewsEvent({...base,title,url:'https://news.example.com/'+title.length}),
+    'event:krafton-kiff-kpop-ai-chat-launch-2026-11-02',title);
+ }
+ const exact={ticker:'크래프톤',url:'https://www.thedailypost.kr/news/articleView.html?idxno=116597&utm_source=naver'};
+ assert.equal(coveredNewsEvent(exact),'event:krafton-kiff-kpop-ai-chat-launch-2026-11-02');
+ assert.equal(reportedKiffLaunch({...exact,title:'별도 내용',pub_ms:now}),true);
+ assert.equal(coveredNewsEvent({...base,title:'크래프톤 키프, 글로벌 10개국 신규 출시 확정'}),null);
+ assert.equal(coveredNewsEvent({...base,title:'크래프톤 Kiff 이용자 수 100만 돌파'}),null);
+ assert.equal(coveredNewsEvent({...base,title:'크래프톤 키프, 신규 아티스트 계약 체결'}),null);
+ assert.equal(coveredNewsEvent({...base,title:'크래프톤 Kiff 매출 100억원 달성'}),null);
+ assert.equal(coveredNewsEvent({...base,ticker:'에이피알',title:headlines[0]}),null);
+ assert.equal(coveredNewsEvent({...base,pub_ms:Date.parse('2026-12-01T00:00Z'),title:headlines[0]}),null);
+});
