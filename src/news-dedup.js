@@ -69,6 +69,9 @@ export function sameNews(a, b) {
   const summarySimilarity = overlap(grams(ad.slice(0, 400)), grams(bd.slice(0, 400)));
   const ak = keywords(at), bk = keywords(bt);
   const shared = [...ak].filter(word => bk.has(word)).length;
+  // Different outlets frequently paraphrase the headline and publish unrelated boilerplate excerpts.
+  // Require multiple shared informative headline anchors before ignoring excerpt divergence.
+  if (shared >= 2 && Math.min(at.length, bt.length) >= 18 && titleSimilarity >= 0.74) return true;
   return (titleSimilarity >= 0.62 && summarySimilarity >= 0.5)
     || (shared >= 3 && titleSimilarity >= 0.32 && summarySimilarity >= 0.48)
     || (shared >= 2 && titleSimilarity >= 0.28 && summarySimilarity >= 0.72)
