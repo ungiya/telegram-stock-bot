@@ -70,7 +70,7 @@ function productLaunchRelation(a,b) {
   const key = value => {
     const withoutTicker=value.toLowerCase().split(String(a.ticker||'').toLowerCase()).join(' ');
     const english=(withoutTicker.match(/\b[a-z][a-z0-9.-]{3,19}\b/gi)||[])
-      .map(x=>x.toLowerCase()).filter(x=>!['kpop','k-pop','openai','korea','global','chatgpt','apple','google','meta','news','game','games','stock','krafton','electric','industry','release','launch','cloud','north','america','fifty','system'].includes(x));
+      .map(x=>x.toLowerCase()).filter(x=>!['kpop','k-pop','pubg','medicube','openai','korea','global','chatgpt','apple','google','meta','news','game','games','stock','krafton','electric','industry','release','launch','cloud','north','america','fifty','system'].includes(x));
     const quoted=[...withoutTicker.matchAll(/['"“‘]([가-힣]{2,12})['"”’]/g)].map(m=>m[1]);
     return new Set([...english,...quoted]);
   };
@@ -84,7 +84,11 @@ function productLaunchRelation(a,b) {
   const aWords=eventAnchors(aTitle,a.ticker),bWords=eventAnchors(bTitle,b.ticker);
   const common=[...aWords].filter(v=>bWords.has(v)).length;
   const similarity=overlap(grams(text(aTitle,a.ticker)),grams(text(bTitle,b.ticker)));
-  return common >= 2 || similarity >= 0.45;
+  // The product name plus the same launch action and same-week date is a
+  // stronger signal than editorial headlines sharing generic business words.
+  // Require nontrivial contextual overlap so unrelated features do not merge.
+  return common >= 2 || similarity >= 0.45 ||
+    (shared.length > 0 && similarity >= 0.22 && Math.abs(aTime-bTime) <= 3*86400000);
 }
 
 function matchingEvent(a, b) {
