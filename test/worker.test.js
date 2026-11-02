@@ -105,3 +105,36 @@ test("queued Musinsa fashion and designer reports are discarded after filter cha
   for (const item of queued) assert.equal(queuedNewsExcluded(item), true, item.title);
   assert.equal(queuedNewsExcluded({ ticker: "무신사", title: "무신사 IPO 예비심사 청구", description: "", url: "https://example.com/4" }), false);
 });
+
+
+test("real PGS screenshot headlines are rejected at ingestion and in the existing send queue", () => {
+  const now = Date.parse("2026-11-02T13:42:00+09:00");
+  const cases = [
+    ["파마리서치, 글로벌 심포지엄 개최…리쥬란 PN 임상 근거·안전성 및 시술 사례 공유",
+     "강릉에서 개최된 제7회 파마리서치 글로벌 심포지엄(PGS). 64개국 의료진 750여 명 참석"],
+    ["파마리서치, 글로벌 심포지엄 개최…64개국 의료진 750여명 참석",
+     "파마리서치가 강릉에서 제7회 파마리서치 글로벌 심포지엄(PGS)을 성황리에 개최"],
+    ["파마리서치, 제7회 '파마리서치 글로벌 심포지엄' 개최",
+     "PharmaResearch Global Symposium, PGS 2026"]
+  ];
+  for (const [title, description] of cases) {
+    const article = { title, description, originallink:"https://example.com/pgs-2026",
+      pubDate:"Mon, 02 Nov 2026 04:41:00 GMT" };
+    assert.equal(normalizeArticle(article,"파마리서치",now),null,title);
+  }
+});
+
+test("PGS is dropped from pending queue; later actual trial results are not suppressed", async () => {
+  const { queuedNewsExcluded } = await import("../src/worker.js");
+  const pub_ms=Date.parse("2026-11-02T13:41:00+09:00");
+  const base={ticker:"파마리서치",url:"https://example.com/news",pub_ms};
+  assert.equal(queuedNewsExcluded({...base,title:
+    "파마리서치, 글로벌 심포지엄 개최…64개국 의료진 750여명 참석",
+    description:"64개국 750여명의 의료진이 참여한 제7회 PGS 개최"}),true);
+  assert.equal(queuedNewsExcluded({...base,title:
+    "파마리서치, 제7회 글로벌 심포지엄 개최…리쥬란 PN 임상 근거와 안전성 공유",
+    description:"재생의학 분야 연구 발표"}),true);
+  assert.equal(queuedNewsExcluded({...base,title:
+    "파마리서치 PGS에서 임상 3상 결과 발표",
+    description:"새로운 3상 결과를 공개했다."}),false);
+});
