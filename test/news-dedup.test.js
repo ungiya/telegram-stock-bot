@@ -157,3 +157,17 @@ test('same Kiff event from multiple sources is suppressed; later material Kiff n
   assert.equal(sameNews(a,b),true);
   assert.equal(sameNews(a,{...b,title:'크래프톤 Kiff 신규 해외 국가 출시'}),false);
 });
+
+
+test('syndicated Krafton service-start and release headlines match the same event', () => {
+  const ts=Date.parse('2026-11-03T00:30:00Z');
+  const first={ticker:'크래프톤',title:'크래프톤 AI 캐릭터챗 Kiff 공식 출시',
+    description:'국내에서 K팝 AI 캐릭터 대화 서비스를 상용화했다.',pub_ms:ts};
+  const second={ticker:'크래프톤',title:'크래프톤 Kiff 서비스 시작',
+    description:'아티스트 인공지능 캐릭터와 대화하는 신규 서비스가 개시됐다.',pub_ms:ts+3*3600000};
+  assert.equal(sameNews(first,second),true,'equivalent cross-publisher product launches');
+  assert.equal(sameNews(first,{...second,title:'크래프톤 Kiff 추가 기능 업데이트 공개'}),false,
+    'a newly announced feature is not the same launch');
+  assert.equal(sameNews(first,{...second,title:'크래프톤 Kiff 글로벌 신규 출시'}),false,
+    'a new geographic rollout is a distinct update');
+});
