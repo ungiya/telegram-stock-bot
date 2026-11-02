@@ -51,7 +51,7 @@ function eventAction(value) {
   if (/실적|영업이익|순이익|매출|흑자|적자/.test(t)) return 'earnings';
   if (/수주|공급\s*계약|납품|계약\s*체결/.test(t)) return 'contract';
   if (/인수|합병|지분\s*매각|투자\s*유치/.test(t)) return 'capital';
-  if (/출시|공개|발표|시연|선보|선봬|개발|공식화|상용화|론칭|런칭|개시|서비스\\s*시작|서비스\\s*오픈/.test(t)) return 'announcement';
+  if (/출시|공개|발표|시연|선보|선봬|개발|공식화|상용화|론칭|런칭|개시|서비스\s*시작|서비스\s*오픈/.test(t)) return 'announcement';
   if (/협력|협약|파트너십|제휴|맞손/.test(t)) return 'partnership';
   return '';
 }
