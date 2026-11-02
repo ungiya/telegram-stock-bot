@@ -8,18 +8,30 @@ const tournament = new RegExp("게임\\s*대회|e[\\s-]*스포츠|이[\\s-]*스�
 const game = new RegExp("배틀그라운드|PUBG|배그|게임|e[\\s-]*스포츠|이스포츠", "i");
 const event = new RegExp("대회|리그|본선|예선|출전|개막|폐막|참가\\s*팀|경기\\s*일정|상금", "i");
 
-// Musinsa: retain corporate/investment developments, exclude fashion editorial
-// and product/designer publicity. A financial keyword only in background copy
-// must not rescue a fashion headline.
-const musinsaCorporate = /기업공개|\bipo\b|상장|예비심사|심사청구|기업가치|공모가|공모주|실적|영업이익|순이익|매출|거래액|투자\s*유치|지분\s*(인수|매각)|인수합병|합병|유상증자|전환사채|자사주|배당|대표이사|경영권|횡령|배임|소송|과징금|행정\s*처분|회생|파산|구조조정|해외\s*진출|해외\s*사업/i;
-const musinsaFashion = /패션|코디|스타일링|룩북|컬렉션|디자이너|크리에이티브\s*디렉터|creative\s*director|\bcd\b|김지용|지용킴|jiyong\s*kim|화보|착장|의류|옷차림|슬랙스|스니커즈|운동화|후드|니트|데님|청바지|아우터|다운재킷|패딩|티셔츠|가을옷|겨울옷|신상품|신제품|캡슐|협업\s*상품|콜라보|팝업|런웨이|팬츠|드레스|맨투맨|캐주얼|웨어/i;
+// Musinsa is an IPO/investment watch, NOT a fashion shopping or staffing feed.
+// In particular, designer/CD hiring must never be rescued by references to IPO,
+// sales, overseas expansion or business growth within the same headline.
+const musinsaFashionHeadline = /디자이너|크리에이티브\s*디렉터|creative\s*director|\bcd\b|아트\s*디렉터|김지용|지용킴|jiyong\s*kim|룩북|화보|스타일링|코디|패션쇼|런웨이|컬렉션|착장|스트릿\s*패션|스트리트\s*패션|신상품|신제품|신상|신규\s*상품|쇼핑\s*(?:추천|혜택|트렌드)|쇼핑몰|기획전|할인|쿠폰|세일|특가|무진장|타임딜|사은품|증정|팝업|프로모션|콜라보|협업\s*(?:상품|컬렉션|라인)|브랜드\s*(?:출시|론칭|런칭|입점|영입|협업|콜라보|팝업|매출)|상품\s*(?:출시|공개|입점|판매)|의류|코트|아우터|패딩|스니커즈|운동화|팬츠|니트|데님|티셔츠|맨투맨|후드|가을옷|겨울옷|유행\s*아이템/i;
+const musinsaTalentAnnouncement = /(?:인재|인물|인사|전문가|크리에이터|디자이너|디렉터|스타일리스트|김지용|지용킴).{0,30}(?:영입|선임|발탁|합류|임명|사임|퇴임|해임)|(?:영입|선임|발탁|합류|임명).{0,30}(?:디자이너|디렉터|스타일리스트|김지용|지용킴)|(?:신임|새)\s*(?:디자이너|디렉터)/i;
+const musinsaInvestmentNews = /기업\s*공개|\bipo\b|상장|예비\s*심사|심사\s*청구|공모\s*(?:가|주|청약)|기업\s*가치|증권\s*신고서|상장\s*주관사|투자\s*유치|자금\s*조달|시리즈\s*[a-z]|유상\s*증자|무상\s*증자|전환\s*사채|회사채|지분\s*(?:인수|매각|투자)|인수\s*합병|\bm&a\b|경영권|최대\s*주주|자사주|배당|대표\s*이사|신임\s*대표|구조\s*조정|사업\s*(?:재편|매각|인수)|횡령|배임|소송|과징금|행정\s*처분|회생|파산|감사\s*의견|재무\s*제표|분기\s*실적|연간\s*실적|연결\s*실적|실적\s*(?:발표|공시)|영업\s*이익|당기\s*순이익|순이익|적자\s*전환|흑자\s*전환|해외\s*(?:진출|사업)/i;
+const musinsaFinancialResults = /(?:매출|거래액).{0,20}(?:\d|전년|분기|영업\s*이익|순이익|급증|증가|감소|실적)|(?:분기|연간|연결|전년|지난해|작년|올해).{0,20}(?:매출|거래액|실적)/i;
+const musinsaRetailActivity = /(?:패션|브랜드|스토어|매장|무신사\s*스탠다드|무신사\s*뷰티).{0,28}(?:출시|런칭|론칭|영입|발탁|선임|오픈|개점|입점|팝업|쇼핑|판매|공개|컬렉션|대전|기획전|행사|콜라보|협업)|(?:출시|런칭|론칭|입점|팝업|컬렉션|화보|영입|선임).{0,25}(?:패션|브랜드|스토어|매장|무신사\s*스탠다드|무신사\s*뷰티)/i;
+
 export function companyNewsAllowed(ticker, title, description = '') {
   if (ticker !== '무신사') return true;
-  // Musinsa alerts are investment news, not consumer shopping/editorial news.
-  // A finance keyword buried in the description must never rescue a promotional headline.
-  const corporateTitle = /기업공개|\bipo\b|상장|예비심사|심사청구|기업가치|공모가|공모주|실적|영업이익|순이익|매출|거래액|투자\s*유치|지분\s*(인수|매각)|인수합병|합병|유상증자|전환사채|자사주|배당|대표이사|경영권|횡령|배임|소송|과징금|행정\s*처분|회생|파산|구조조정|해외\s*(진출|사업)|사업\s*(재편|매각|인수)|신규\s*투자|자금\s*조달|인적\s*분할|물적\s*분할|최대주주|재무|적자|흑자|증권신고서|기관\s*투자자|주관사|시리즈\s*[a-z]/i;
-  const consumerHeadline = /할인|쿠폰|기획전|타임딜|특가|쇼핑\s*혜택|증정|사은품|구매\s*혜택|프로모션|체험단|경품|선착순|팝업|화보|룩북|코디|스타일링|컬렉션|신상|신제품|신상품|브랜드\s*(협업|론칭|출시)|콜라보|스니커즈|패딩|니트|데님|티셔츠|패션\s*트렌드|쇼핑\s*추천|입점\s*상품/i;
-  return corporateTitle.test(title) && !consumerHeadline.test(title);
+  const headline = String(title || '');
+  const excerpt = String(description || '');
+  // Block designer stories regardless of misleading corporate keywords.
+  if (musinsaFashionHeadline.test(headline) || musinsaTalentAnnouncement.test(headline) ||
+      musinsaRetailActivity.test(headline)) return false;
+  // A vague '무신사, 새로운 도약' heading about designer hiring is still fashion.
+  const material = musinsaInvestmentNews.test(headline) || musinsaFinancialResults.test(headline);
+  if (!material) return false;
+  if (/디자이너|크리에이티브\s*디렉터|creative\s*director|김지용|지용킴|jiyong\s*kim/i.test(excerpt) &&
+      /영입|발탁|선임|임명|합류|크리에이티브|디자인\s*총괄|패션\s*조직/i.test(excerpt) &&
+      !/기업\s*공개|\bipo\b|상장\s*예비\s*심사|심사\s*청구|영업\s*이익|분기\s*실적|연결\s*실적|인수\s*합병|투자\s*유치/i.test(headline))
+    return false;
+  return true;
 }
 
 // Exclude securities-firm price targets, rating changes and analyst commentary
