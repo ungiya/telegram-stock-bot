@@ -28,3 +28,12 @@ test('article normalization applies aliases and filters to cleaned fields', () =
   assert.ok(normalizeArticle(article, 'LS일렉트릭', now));
   assert.equal(normalizeArticle({...article, title:'LS ELECTRIC 주가 급등'}, 'LS일렉트릭', now), null);
 });
+
+test('Musinsa fashion/editorial and designer appointments are excluded; corporate headlines survive', () => {
+  for (const title of ['무신사 스탠다드 김지용 크리에이티브 디렉터 선임','무신사 겨울 패딩 신제품 출시','무신사 지용킴 품고 글로벌 캐주얼 체질 개선','무신사 코디 추천','무신사 새 컬렉션 룩북 공개'])
+    assert.equal(newsAllowed('무신사',['무신사'],title,'지난해 매출이 증가했다.'),false);
+  assert.equal(newsAllowed('무신사',['무신사'],'무신사 새로운 도전','김지용 디자이너를 영입해 패션 상품을 만든다.'),false);
+  for(const title of ['패션 플랫폼 무신사 IPO 예비심사 청구','무신사 영업이익 증가','무신사 투자 유치','무신사 해외 진출 확대','무신사 대표이사 선임'])
+    assert.equal(newsAllowed('무신사',['무신사'],title,'패션 플랫폼 무신사 소식'),true);
+  assert.equal(newsAllowed('에이피알',['에이피알'],'에이피알 신제품 출시'),true);
+});

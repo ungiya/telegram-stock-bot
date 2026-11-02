@@ -301,3 +301,25 @@ test('four-day old representative still suppresses a republished article', async
   assert.equal((await runNewsCheck(f.env)).sent,0);
   assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/story').duplicate_of,'https://old.example/story');
 });
+
+test('already received Musinsa appointment is discarded before Telegram even without prior history', async t => {
+  const f=fixture(t),now=Date.parse('2026-11-02T01:00Z');
+  t.mock.timers.enable({apis:['Date'],now});
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  insert.run('https://late.example/musinsa','무신사','지용킴 품은 무신사 스탠다드…글로벌 캐주얼로 체질 개선','',now,now);
+  assert.equal((await runNewsCheck(f.env)).sent,0);
+  assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url=?').get('https://late.example/musinsa').sent_ms);
+  insert.run('https://new.example/musinsa','무신사','무신사 대표이사 사임','',now,now);
+  assert.equal((await runNewsCheck(f.env)).sent,1);
+});
+
+test('fashion filter also discards queued Musinsa articles created before deployment', async t => {
+  const f=fixture(t),now=Date.now();
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  insert.run('https://queued.example/fashion','무신사','무신사 겨울 신제품 컬렉션 공개','지난해 매출이 늘었다.',now,now);
+  insert.run('https://queued.example/ipo','무신사','무신사 IPO 예비심사 청구','패션 플랫폼 무신사',now,now);
+  assert.equal((await runNewsCheck(f.env)).sent,1);
+  assert.equal(f.replies.length,1);
+  assert.match(f.replies[0].text,/IPO/);
+  assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url=?').get('https://queued.example/fashion').sent_ms);
+});

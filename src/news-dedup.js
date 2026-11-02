@@ -73,17 +73,27 @@ export function sameNews(a, b) {
     || (shared >= 1 && titleSimilarity >= 0.3 && Math.min(ad.length,bd.length) >= 40 && summarySimilarity >= 0.9);
 }
 
-// The user confirmed repeated delivery of this specific 2026-10-30 GSPA.
+// The user confirmed repeated delivery of these specific 2026-10-30 events.
 // Suppress its syndicated coverage even when the original has aged out of
 // history or a publisher supplies a completely different/empty excerpt.
-// Date bounds and follow-up exclusions prevent a permanent Siemens blacklist.
+// Date bounds and follow-up exclusions prevent permanent company/person blacklists.
 export function coveredNewsEvent(item) {
-  if (item.ticker !== '효성중공업') return null;
   const published = Number(item.pub_ms);
   if (!Number.isFinite(published) || published < Date.parse('2026-10-29T00:00:00+09:00')
     || published >= Date.parse('2026-11-14T00:00:00+09:00')) return null;
   const title = String(item.title || '').normalize('NFKC').toLowerCase();
   const body = title + ' ' + String(item.description || '').normalize('NFKC').toLowerCase();
+  if (item.ticker === '무신사') {
+    const person = /김지용|지용킴|jiyong\s*kim/.test(body);
+    const appointment = /선임|영입|발탁|임명|합류|품(?:은|었다|다)|새\s*(?:디렉터|cd)/.test(body);
+    const role = /크리에이티브\s*디렉터|creative\s*director|\bcd\b/.test(body);
+    // Keep new appointments to other roles, departures and actual product launches.
+    const followup = /사임|해임|퇴임|퇴사|결별|철회|취소|부인|정정|소송|보직\s*(?:변경|이동)|전보|승진|재선임|대표이사|신임\s*대표|사장|cfo|cto|출시|출점|개점|실적|매출|영업이익|첫\s*컬렉션/.test(title);
+    if (person && appointment && !followup && (role || /김지용|지용킴|jiyong\s*kim/.test(title)))
+      return 'event:musinsa-jiyongkim-cd-2026-10-30';
+    return null;
+  }
+  if (item.ticker !== '효성중공업') return null;
   if (!/지멘스|siemens/.test(body)) return null;
   // Concrete follow-ups must not be swallowed by the old agreement coverage.
   if (/해지|철회|취소|중단|결렬|부인|사실무근|정정|소송|실적|영업이익|순이익|수주|공급\s*계약|납품|추가\s*(협약|계약)|신규\s*계약|재계약/.test(title)) return null;

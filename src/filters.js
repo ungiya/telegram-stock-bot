@@ -8,11 +8,23 @@ const tournament = new RegExp("게임\\s*대회|e[\\s-]*스포츠|이[\\s-]*스�
 const game = new RegExp("배틀그라운드|PUBG|배그|게임|e[\\s-]*스포츠|이스포츠", "i");
 const event = new RegExp("대회|리그|본선|예선|출전|개막|폐막|참가\\s*팀|경기\\s*일정|상금", "i");
 
+// Musinsa: retain corporate/investment developments, exclude fashion editorial
+// and product/designer publicity. A financial keyword only in background copy
+// must not rescue a fashion headline.
+const musinsaCorporate = /기업공개|\bipo\b|상장|예비심사|심사청구|기업가치|공모가|공모주|실적|영업이익|순이익|매출|거래액|투자\s*유치|지분\s*(인수|매각)|인수합병|합병|유상증자|전환사채|자사주|배당|대표이사|경영권|횡령|배임|소송|과징금|행정\s*처분|회생|파산|구조조정|해외\s*진출|해외\s*사업/i;
+const musinsaFashion = /패션|코디|스타일링|룩북|컬렉션|디자이너|크리에이티브\s*디렉터|creative\s*director|\bcd\b|김지용|지용킴|jiyong\s*kim|화보|착장|의류|옷차림|슬랙스|스니커즈|운동화|후드|니트|데님|청바지|아우터|다운재킷|패딩|티셔츠|가을옷|겨울옷|신상품|신제품|캡슐|협업\s*상품|콜라보|팝업|런웨이|팬츠|드레스|맨투맨|캐주얼|웨어/i;
+export function companyNewsAllowed(ticker, title, description = '') {
+  if (ticker !== '무신사') return true;
+  if (musinsaCorporate.test(title)) return true;
+  return !musinsaFashion.test(title + ' ' + description);
+}
+
 export const norm = value => String(value).toLowerCase().replace(/[^\p{L}\p{N}_]/gu, "");
 export function newsAllowed(ticker, aliases, title, description = "") {
   const text = title + " " + description;
   if (!aliases.some(alias => norm(title).includes(norm(alias)))) return false;
   if (automatic.test(text)) return false;
+  if (!companyNewsAllowed(ticker, title, description)) return false;
   if (promotion.test(title) && !material.test(title)) return false;
   if (market.test(title) && !material.test(text)) return false;
   if (ticker === "크래프톤") {

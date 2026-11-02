@@ -57,3 +57,14 @@ test('the already delivered Siemens GSPA is covered regardless of excerpt, with 
     assert.equal(coveredNewsEvent({...base,title}),null);
   assert.equal(coveredNewsEvent({...base,...siemens,pub_ms:Date.parse('2027-01-01T00:00Z')}),null);
 });
+
+test('known Musinsa CD appointment groups person and role aliases but preserves follow-ups', async () => {
+  const {coveredNewsEvent}=await import('../src/news-dedup.js');
+  const base={ticker:'무신사',pub_ms:Date.parse('2026-11-02T00:00Z'),description:''};
+  for(const title of ['무신사 스탠다드, 크리에이티브 디렉터로 김지용 선임','무신사 김지용 영입','지용킴 품은 무신사 스탠다드…글로벌 캐주얼로 체질 개선','무신사 스탠다드 JiyongKim CD 발탁'])
+    assert.equal(coveredNewsEvent({...base,title}),'event:musinsa-jiyongkim-cd-2026-10-30');
+  for(const title of ['무신사 김지용 CD 사임','무신사 김지용 대표이사 선임','무신사 김지용 영입 이후 첫 컬렉션 출시','무신사 김철수 크리에이티브 디렉터 선임'])
+    assert.equal(coveredNewsEvent({...base,title}),null);
+  assert.equal(coveredNewsEvent({...base,title:'무신사 디자인 혁신 위해 새 디렉터 영입',description:'지용킴 김지용을 크리에이티브 디렉터로 선임했다.'}),'event:musinsa-jiyongkim-cd-2026-10-30');
+  assert.equal(coveredNewsEvent({...base,title:'무신사 김지용 선임',pub_ms:Date.parse('2027-01-01T00:00Z')}),null);
+});

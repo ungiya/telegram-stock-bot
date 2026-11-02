@@ -4,7 +4,7 @@ import { DART_CRON, runDartCheck } from "./dart.js";
 import { sameNews, coveredNewsEvent } from "./news-dedup.js";
 import { REPORT_CRON, runReportCheck } from "./reports.js";
 import { liveWatchlist, pollCommands, withBotLock } from "./commands.js";
-import { newsAllowed } from "./filters.js";
+import { newsAllowed, companyNewsAllowed } from "./filters.js";
 import { ALIASES } from "./watchlist.js";
 
 const NAVER_NEWS_API = "https://naverapihub.apigw.ntruss.com/search/v1/news";
@@ -151,13 +151,14 @@ async function sendPending(env, now, companies) {
     "RETURNING url, ticker, title, description, pub_ms"
   ).bind(now + 120_000, now, ...active, MAX_PER_ALERT).all();
 
-  const blocked = (rows.results || []).filter(item => blockedNewsSource(item.url));
+  const excluded = item => blockedNewsSource(item.url) || !companyNewsAllowed(item.ticker, item.title, item.description);
+  const blocked = (rows.results || []).filter(excluded);
   if (blocked.length) {
     await env.DB.batch(blocked.map(item => env.DB.prepare(
       "UPDATE articles SET sent_ms = ?, lease_until_ms = NULL WHERE url = ?"
     ).bind(now, item.url)));
   }
-  const claimed = (rows.results || []).filter(item => !blockedNewsSource(item.url))
+  const claimed = (rows.results || []).filter(item => !excluded(item))
     .sort((a, b) => a.pub_ms - b.pub_ms || a.url.localeCompare(b.url));
   if (!claimed.length) return 0;
   const links = claimed.map((item) => item.url);
