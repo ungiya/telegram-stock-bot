@@ -172,3 +172,25 @@ test("New publisher blacklist blocks both incoming and queued news", async () =>
     originallink:"https://safe-example.org/news/123",
   },"에이피알",now));
 });
+
+
+test('Kiff launch is excluded both when collected from Naver and when waiting in queue', async () => {
+  const { queuedNewsExcluded } = await import('../src/worker.js');
+  const now=Date.parse('2026-11-02T22:30:00+09:00');
+  const base={
+    title:"크래프톤, AI 캐릭터 챗 'Kiff' 서비스 개시…K팝 인공지능 사업 확장",
+    description:'크래프톤이 아티스트 페르소나 기반의 AI 캐릭터 챗 솔루션을 국내에 공식 상용화',
+    originallink:'https://www.thedailypost.kr/news/articleView.html?idxno=116597',
+    link:'https://n.news.naver.com/mnews/article/123/456',
+    pubDate:new Date(now).toUTCString()
+  };
+  assert.equal(normalizeArticle(base,'크래프톤',now),null);
+  assert.equal(queuedNewsExcluded({
+    url:base.originallink,ticker:'크래프톤',
+    title:base.title,description:base.description,pub_ms:now
+  }),true);
+  assert.ok(normalizeArticle({
+    ...base,originallink:'https://example.com/follow-up',
+    title:'크래프톤 Kiff 글로벌 신규 국가 출시 계약 체결',
+  },'크래프톤',now),'material follow-up must remain eligible');
+});
