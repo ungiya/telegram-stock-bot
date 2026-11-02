@@ -95,6 +95,17 @@ export function coveredNewsEvent(item) {
     || published >= Date.parse('2026-11-14T00:00:00+09:00')) return null;
   const title = String(item.title || '').normalize('NFKC').toLowerCase();
   const body = title + ' ' + String(item.description || '').normalize('NFKC').toLowerCase();
+  if (item.ticker === '크래프톤') {
+    // The Oct 30 BARS announcement is syndicated as '루디 0.2', 'RUDI 0.2',
+    // or '로봇 AI 사회적 지능', often with unrelated descriptions.
+    const rudi = /(?:루디|rudi)\s*(?:0[.]2|2[.]0)/i.test(body);
+    const context = /로봇|로보틱스|루도|ludo|사회적\s*지능|\bbars\b|버클리/i.test(body);
+    const release = /공개|발표|선보|시연|개발|탑재|진화|고도화|인간\s*의도|사람\s*의도|소통|협력/.test(body);
+    // Headline-only exemptions: genuine subsequent developments remain alertable.
+    const followup = /투자\s*유치|지분\s*인수|인수합병|양산|상용화\s*계약|상용화\s*확정|공급\s*계약|수주|매출|영업이익|실적|특허\s*등록|승인|소송|철회|취소|정정|루디\s*0[.]3|rudi\s*0[.]3/i.test(title);
+    if (rudi && context && release && !followup)
+      return 'event:krafton-rudi-0.2-bars-2026-10-30';
+  }
   if (item.ticker === 'LS일렉트릭') {
     const speaker = /구자균/.test(body);
     const ai = /인공지능|\bai\b/.test(body);
