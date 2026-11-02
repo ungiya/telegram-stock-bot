@@ -94,3 +94,14 @@ test("Naver errors distinguish gateway throttling and daily quota without exposi
   }
   assert.match((await naverError(new Response("not json", {status:503}))).message, /status 503 · code unknown/);
 });
+
+test("queued Musinsa fashion and designer reports are discarded after filter changes", async () => {
+  const { queuedNewsExcluded } = await import("../src/worker.js");
+  const queued = [
+    { ticker: "무신사", title: "무신사 김지용 크리에이티브 디렉터 영입", description: "상장과 IPO 준비", url: "https://example.com/1" },
+    { ticker: "무신사", title: "무신사 패션 브랜드 매출 1조 돌파", description: "해외 진출", url: "https://example.com/2" },
+    { ticker: "무신사", title: "무신사 브랜드 콜라보 컬렉션 발표", description: "실적 기대", url: "https://example.com/3" }
+  ];
+  for (const item of queued) assert.equal(queuedNewsExcluded(item), true, item.title);
+  assert.equal(queuedNewsExcluded({ ticker: "무신사", title: "무신사 IPO 예비심사 청구", description: "", url: "https://example.com/4" }), false);
+});
