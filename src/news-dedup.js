@@ -51,10 +51,42 @@ function eventAction(value) {
   if (/실적|영업이익|순이익|매출|흑자|적자/.test(t)) return 'earnings';
   if (/수주|공급\s*계약|납품|계약\s*체결/.test(t)) return 'contract';
   if (/인수|합병|지분\s*매각|투자\s*유치/.test(t)) return 'capital';
-  if (/출시|공개|발표|시연|선보|개발|공식화/.test(t)) return 'announcement';
+  if (/출시|공개|발표|시연|선보|선봬|개발|공식화|상용화|론칭|런칭|개시|서비스\\s*시작|서비스\\s*오픈/.test(t)) return 'announcement';
   if (/협력|협약|파트너십|제휴|맞손/.test(t)) return 'partnership';
   return '';
 }
+// A distinctive product/service name can appear in substantially different
+// headlines and excerpts. Only link launches of the same named product, never
+// unrelated announcements merely because the company and "AI" match.
+function productLaunchRelation(a,b) {
+  if (eventAction(a.title) !== 'announcement' || eventAction(b.title) !== 'announcement') return false;
+  const aTime = Number(a.pub_ms ?? a.publishedAt);
+  const bTime = Number(b.pub_ms ?? b.publishedAt);
+  if (!Number.isFinite(aTime) || !Number.isFinite(bTime) ||
+      Math.abs(aTime - bTime) > 7*86400000) return false;
+  const aTitle=String(a.title||'').normalize('NFKC'), bTitle=String(b.title||'').normalize('NFKC');
+  const differentMilestone=/(?:추가|신규|후속)\s*(?:기능|계약|국가|해외|시장|업데이트|버전|출시)|(?:해외|글로벌|미국|일본|유럽|중국)\s*(?:신규|추가)?\s*출시|(?:출시|공개)\s*(?:성과|후속)/i;
+  if (differentMilestone.test(aTitle) || differentMilestone.test(bTitle)) return false;
+  const key = value => {
+    const withoutTicker=value.toLowerCase().split(String(a.ticker||'').toLowerCase()).join(' ');
+    const english=(withoutTicker.match(/\b[a-z][a-z0-9.-]{3,19}\b/gi)||[])
+      .map(x=>x.toLowerCase()).filter(x=>!['kpop','k-pop','openai','korea','global','chatgpt','apple','google','meta','news','game','games','stock','krafton','electric','industry','release','launch','cloud','north','america','fifty','system'].includes(x));
+    const quoted=[...withoutTicker.matchAll(/['"“‘]([가-힣]{2,12})['"”’]/g)].map(m=>m[1]);
+    return new Set([...english,...quoted]);
+  };
+  const aa=key(aTitle),bb=key(bTitle);
+  const shared=[...aa].filter(v=>bb.has(v));
+  if (!shared.length) return false;
+  // Separate product generations, expansions, and milestone counts.
+  const revision = title=>[...(title.match(/\b\d+(?:\.\d+)?\b/g)||[])];
+  const ar=revision(aTitle),br=revision(bTitle);
+  if (ar.length && br.length && ar.every(v=>!br.includes(v))) return false;
+  const aWords=eventAnchors(aTitle,a.ticker),bWords=eventAnchors(bTitle,b.ticker);
+  const common=[...aWords].filter(v=>bWords.has(v)).length;
+  const similarity=overlap(grams(text(aTitle,a.ticker)),grams(text(bTitle,b.ticker)));
+  return common >= 2 || similarity >= 0.45;
+}
+
 function matchingEvent(a, b) {
   const aa = eventAnchors(a.title, a.ticker), bb = eventAnchors(b.title, b.ticker);
   const common = [...aa].filter(v => bb.has(v));
@@ -117,6 +149,7 @@ export function sameNews(a, b) {
   if (conflictingFacts(a.description, b.description, new Set(['amount', '분기']))) return false;
   if (at === bt) return true;
   if (matchingEvent(a, b)) return true;
+  if (productLaunchRelation(a,b)) return true;
   const titleSimilarity = overlap(grams(at), grams(bt));
   const ad = text(a.description, a.ticker), bd = text(b.description, b.ticker);
   if (Math.min(at.length, bt.length) >= 12 && titleSimilarity >= 0.87) return true;
