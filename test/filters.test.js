@@ -99,3 +99,37 @@ test('Musinsa material IPO, earnings and financing are still delivered', () => {
     assert.equal(newsAllowed('무신사',['무신사'],title,'패션 플랫폼의 기업 활동'),true,title);
   assert.equal(newsAllowed('에이피알',['에이피알'],'에이피알 신제품 출시'),true);
 });
+
+
+test('APR marketing publicity is blocked, material developments are preserved', async () => {
+  const { promotionalNewsExcluded } = await import('../src/filters.js');
+  const rejected=[
+    '에이피알 메디큐브 글로벌 인기 브랜드 선정',
+    '에이피알, 뷰티 캠페인 성료…해외서도 인기',
+    '에이피알, 미국 아마존 뷰티 랭킹 1위 달성',
+    '에이피알 브랜드 앰버서더 새 광고 영상 공개',
+    '에이피알 뷰티 체험 팝업 오픈',
+    '에이피알, 메디큐브 완판 행진 화제',
+    '에이피알, SNS 틱톡 인플루언서 캠페인'
+  ];
+  for (const title of rejected) {
+    assert.equal(promotionalNewsExcluded('에이피알',title,'매출도 늘어날 것으로 기대한다'),true,title);
+    assert.equal(newsAllowed('에이피알',['에이피알'],title,'올해 해외 매출이 성장했다.'),false,title);
+  }
+  const allowed=[
+    '에이피알 3분기 연결 매출 7731억원 기록',
+    '에이피알 3분기 영업이익 1606억원 발표',
+    '에이피알 메디큐브 신제품 출시',
+    '에이피알 EBD 신기기 출시 공개',
+    '에이피알 미국 현지 공장 신설 착공',
+    '에이피알 1000억원 공급 계약 체결',
+    '에이피알 美 FDA 승인 취득',
+    '에이피알 미국 매출 1000억원 기록…뷰티 랭킹 1위',
+    '에이피알 3분기 실적 발표…글로벌 인기 브랜드 1위'
+  ];
+  for (const title of allowed) {
+    assert.equal(promotionalNewsExcluded('에이피알',title),false,title);
+    assert.equal(newsAllowed('에이피알',['에이피알'],title),true,title);
+  }
+  assert.equal(promotionalNewsExcluded('크래프톤','크래프톤 신규 게임 출시'),false);
+});
