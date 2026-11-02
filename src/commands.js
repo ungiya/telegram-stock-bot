@@ -67,7 +67,7 @@ export async function handleCommand(env, message, command) {
     reply = '클라우드 관심 종목 ' + companies.size + '개\n' + [...companies.keys()].join('\n');
   } else if (command.name === 'publishers' || command.name === '언론사') {
     const requested = command.arg || '1';
-    if (!/^[1-9]\\d{0,2}$/.test(requested)) {
+    if (!/^[1-9]\d{0,2}$/.test(requested)) {
       reply = '사용법: /publishers 또는 /publishers 2 (1~999페이지)';
     } else {
       try {
