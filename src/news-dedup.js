@@ -25,6 +25,46 @@ function keywords(value) {
   return new Set(value.split(' ').map(word => word.replace(/(으로|에서|과|와|의|은|는|이|가|을|를)$/u, ''))
     .filter(word => word.length >= 2 && !/^\d+$/.test(word) && !/^(단독|기자|뉴스|협약|공략|추진|발표|체결|공급계약|계약|공급)$/.test(word)));
 }
+// Event-level comparison for all watchlist companies. Specific named entities,
+// model versions, and counterparties are more durable than outlet-specific wording.
+function eventAnchors(value) {
+  const normalized = String(value || '').normalize('NFKC').toLowerCase()
+    .replace(/루디\s*(0[.]2|2[.]0)/g, 'rudi02')
+    .replace(/rudi\s*(0[.]2|2[.]0)/g, 'rudi02')
+    .replace(/ls\s*(?:electric|일렉트릭)/g, 'ls일렉트릭')
+    .replace(/인공지능/g, 'ai')
+    .replace(/직류/g, 'dc')
+    .replace(/업무협약|파트너십|맞손|손잡았다/g, '협력');
+  const stop = /^(기업|회사|관련|국내|해외|글로벌|시장|사업|기술|발표|공개|추진|확대|강화|성장|투자|새로운|소식|계획|기자|산업|오늘|올해|지난|이번|본격|최초|세계|한국|미국|기반|개발|기업들|전략|협력|인공지능|ai|모델|공급|서비스|데이터|매출|실적)$/;
+  return new Set((normalized.match(/[a-z]+\d+(?:[.]\d+)?|[a-z]{3,}|[가-힣]{2,}/g) || [])
+    .filter(token => token.length >= 3 && !stop.test(token)));
+}
+function eventAction(value) {
+  const t = String(value || '');
+  if (/해지|철회|취소|중단|결렬/.test(t)) return 'cancel';
+  if (/부인|사실무근|정정/.test(t)) return 'correction';
+  if (/실적|영업이익|순이익|매출|흑자|적자/.test(t)) return 'earnings';
+  if (/수주|공급\s*계약|납품|계약\s*체결/.test(t)) return 'contract';
+  if (/인수|합병|지분\s*매각|투자\s*유치/.test(t)) return 'capital';
+  if (/출시|공개|발표|시연|선보|개발|공식화/.test(t)) return 'announcement';
+  if (/협력|협약|파트너십|제휴|맞손/.test(t)) return 'partnership';
+  return '';
+}
+function matchingEvent(a, b) {
+  const aa = eventAnchors(a.title), bb = eventAnchors(b.title);
+  const common = [...aa].filter(v => bb.has(v));
+  const longer = common.filter(v => v.length >= 4 || /\d/.test(v));
+  const actionA = eventAction(a.title), actionB = eventAction(b.title);
+  // Require strong subject anchors, not just a shared company name or buzzword.
+  if (!longer.length || common.length < 2 || !actionA || !actionB) return false;
+  if (actionA !== actionB && !(['announcement','partnership'].includes(actionA) && ['announcement','partnership'].includes(actionB))) return false;
+  const salientA = [...aa].filter(v => /\d/.test(v) || v.length >= 5);
+  const salientB = [...bb].filter(v => /\d/.test(v) || v.length >= 5);
+  if (salientA.some(v => /\d/.test(v)) && salientB.some(v => /\d/.test(v))
+      && !salientA.filter(v => /\d/.test(v)).some(v => salientB.includes(v))) return false;
+  return common.length >= 3 || (common.length >= 2 && longer.length >= 2);
+}
+
 // Compare numbers within their meaning, rather than treating an incidental day
 // in one headline and an amount in the other as conflicting facts.
 function facts(value) {
@@ -62,6 +102,7 @@ export function sameNews(a, b) {
   if (aFlags.some((flag, i) => flag !== bFlags[i])) return false;
   if (conflictingFacts(a.description, b.description)) return false;
   if (at === bt) return true;
+  if (matchingEvent(a, b)) return true;
   const titleSimilarity = overlap(grams(at), grams(bt));
   const ad = text(a.description, a.ticker), bd = text(b.description, b.ticker);
   if (Math.min(at.length, bt.length) >= 12 && titleSimilarity >= 0.87) return true;
