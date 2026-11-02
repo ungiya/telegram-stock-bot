@@ -1,3 +1,4 @@
+import { NEWS_POLICY_VERSION } from './news-policy-version.js';
 import { withNewsDeliveryLock, findNewsDuplicate, deliverNewsOnce } from './news-delivery.js';
 import { KIND_CRON, runKindCheck } from "./kind.js";
 import { claimNewsSearch } from "./news-schedule.js";
@@ -122,9 +123,8 @@ async function pollTopic(env, ticker, aliases, now, paused) {
     "SELECT initialized_at FROM topic_state WHERE ticker = ?"
   ).bind(ticker).first();
 
-  const articles = items
-    .map((item) => normalizeArticle(item, ticker, now, aliases))
-    .filter((item) => item && (!baseline || item.publishedAt >= now - FRESHNESS_MS));
+  const normalized = items.map(item => normalizeArticle(item, ticker, now, aliases));
+  const articles = normalized.filter(item => item && (!baseline || item.publishedAt >= now - FRESHNESS_MS));
 
   const writes = articles.map((item) => env.DB.prepare(
     "INSERT OR IGNORE INTO articles " +
@@ -139,6 +139,7 @@ async function pollTopic(env, ticker, aliases, now, paused) {
     ).bind(ticker, now));
   }
   if (writes.length) await env.DB.batch(writes);
+  return normalized.filter(item => !item).length;
 }
 
 // Re-evaluate already-queued articles against the latest filtering rules.
@@ -243,10 +244,11 @@ export async function runNewsCheck(env, scheduledAt = Date.now(), deadline = Dat
   const companies = await liveWatchlist(env);
   const state = await env.DB.prepare("SELECT paused, last_checked_ms FROM bot_runtime WHERE id = 1").first();
   let succeeded = 0;
+  let filtered = 0;
   for (const [ticker, aliases] of companies) {
     if (Date.now() >= deadline) break;
     try {
-      await pollTopic(env, ticker, aliases, now, state.paused);
+      filtered += await pollTopic(env, ticker, aliases, now, state.paused);
       succeeded++;
     } catch (error) {
       console.error("Search failed for " + ticker + ": " + error.message);
@@ -254,14 +256,14 @@ export async function runNewsCheck(env, scheduledAt = Date.now(), deadline = Dat
   }
   if (companies.size && succeeded === 0) throw new Error("All news searches failed; no alert was sent.");
   const sent = state.paused ? 0 : await sendPending(env, now, companies);
-  await env.DB.prepare("UPDATE bot_runtime SET last_checked_ms = ?, last_checked_count = ?, last_sent_count = ? WHERE id = 1").bind(now, succeeded, sent).run();
+  await env.DB.prepare("UPDATE bot_runtime SET last_checked_ms = ?, last_checked_count = ?, last_sent_count = ?, last_filtered_count = ? WHERE id = 1").bind(now, succeeded, sent, filtered).run();
   // Retain one week of deduplication history, with a light cleanup every 6 hours.
   if (Math.floor((state.last_checked_ms || 0) / 21600000) !== Math.floor(now / 21600000)) {
     await env.DB.prepare("DELETE FROM news_delivery WHERE attempt_ms < ? AND state = 'sent'").bind(now - 30 * 86400000).run();
     await env.DB.prepare("DELETE FROM articles WHERE pub_ms < ?")
       .bind(now - 7 * 24 * 60 * 60 * 1000).run();
   }
-  console.log("Checked " + succeeded + "/" + companies.size + " tickers. Sent " + sent + " articles.");
+  console.log(NEWS_POLICY_VERSION + " filtered=" + filtered + ". Checked " + succeeded + "/" + companies.size + " tickers. Sent " + sent + " articles.");
   return { checked: succeeded, sent };
 }
 

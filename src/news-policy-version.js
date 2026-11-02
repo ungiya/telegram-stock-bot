@@ -1,0 +1,1 @@
+export const NEWS_POLICY_VERSION = '2026-11-02-STRICT-LS-1';

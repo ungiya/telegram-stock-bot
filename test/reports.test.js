@@ -7,7 +7,7 @@ import { parseTable, parseHana, parseKorea, parseNh, parseKb, reportDetail, requ
 
 function fixture(t) {
   const sql = new DatabaseSync(':memory:');
-  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql', '0005_news_dedup.sql', '0006_dart.sql', '0007_news_schedule.sql', '0008_kind.sql', '0009_news_delivery.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
+  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql', '0005_news_dedup.sql', '0006_dart.sql', '0007_news_schedule.sql', '0008_kind.sql', '0009_news_delivery.sql', '0010_news_filter_count.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
   const DB = { prepare(query) {
     const statement = (values = []) => ({ bind: (...args) => statement(args), first: async () => sql.prepare(query).get(...values) || null,
       all: async () => ({ results: sql.prepare(query).all(...values) }), run: async () => sql.prepare(query).run(...values) }); return statement();

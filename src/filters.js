@@ -18,6 +18,15 @@ const musinsaFinancialResults = /(?:매출|거래액).{0,20}(?:\d|전년|분기|
 const musinsaRetailActivity = /(?:패션|브랜드|스토어|매장|무신사\s*스탠다드|무신사\s*뷰티).{0,28}(?:출시|런칭|론칭|영입|발탁|선임|오픈|개점|입점|팝업|쇼핑|판매|공개|컬렉션|대전|기획전|행사|콜라보|협업)|(?:출시|런칭|론칭|입점|팝업|컬렉션|화보|영입|선임).{0,25}(?:패션|브랜드|스토어|매장|무신사\s*스탠다드|무신사\s*뷰티)/i;
 
 export function companyNewsAllowed(ticker, title, description = '') {
+  const company = String(ticker).normalize('NFKC').toLowerCase().replace(/\s/g, '');
+  if (['ls일렉트릭', 'lselectric', '엘에스일렉트릭'].includes(company)) {
+    const headline = String(title || '').normalize('NFKC');
+    const text = headline + ' ' + String(description || '').normalize('NFKC');
+    // Reworded chairman publicity is excluded regardless of outlet, date or URL.
+    // Concrete new corporate events remain eligible, even with a background quote.
+    const concrete = /수주|공급\s*계약|수출\s*계약|계약\s*체결|잠정\s*실적|분기\s*실적|실적\s*(?:발표|공시)|영업\s*이익|순이익|공장.{0,12}(?:증설|신설|준공|착공)|신제품\s*출시|인수\s*합병|지분\s*인수|자사주|배당|소송|리콜|행정\s*처분/.test(headline);
+    if (/구\s*자\s*균/.test(text) && !concrete) return false;
+  }
   if (ticker !== '무신사') return true;
   const headline = String(title || '');
   const excerpt = String(description || '');
