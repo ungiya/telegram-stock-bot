@@ -7,7 +7,7 @@ import { DART_CRON, runDartCheck } from "./dart.js";
 import { coveredNewsEvent } from "./news-dedup.js";
 import { REPORT_CRON, runReportCheck } from "./reports.js";
 import { liveWatchlist, pollCommands, withBotLock } from "./commands.js";
-import { newsAllowed, companyNewsAllowed, analystNewsExcluded } from "./filters.js";
+import { newsAllowed, companyNewsAllowed, analystNewsExcluded, promotionalNewsExcluded } from "./filters.js";
 import { ALIASES } from "./watchlist.js";
 
 const NAVER_NEWS_API = "https://naverapihub.apigw.ntruss.com/search/v1/news";
@@ -162,6 +162,7 @@ async function pollTopic(env, ticker, aliases, now, paused) {
 // A newly excluded article is marked handled rather than sent on the next tick.
 export function queuedNewsExcluded(item) {
   return blockedNewsSource(item.url) ||
+    promotionalNewsExcluded(item.ticker, item.title, item.description) ||
     !companyNewsAllowed(item.ticker, item.title, item.description) ||
     analystNewsExcluded(item.title, item.description) ||
     Boolean(coveredNewsEvent(item));
