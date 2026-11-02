@@ -116,3 +116,7 @@ Workers Production의 Secrets:
 - `/pause`와 `/resume`은 KIND에도 적용됩니다. `/status`에 최근 KIND 처리 결과와 소스별 오류가 표시됩니다.
 - 한 번에 최대 10페이지(페이지당 100건)를 확인합니다. 초과, HTTP 오류, 목록 형식 변경은 오류로 표시하며 부분 결과를 정상 완료로 처리하지 않습니다. 발송 완료 기록은 30일 보관합니다.
 - 실제 KIND HTML 표본과 SQLite 기반 회귀 테스트를 포함합니다. 배포 성공과 Cloudflare에서의 실제 수집/텔레그램 전달 성공은 별도 확인이 필요합니다.
+
+## Durable news delivery and duplicate protection
+
+News delivery now has an independent, renewable lock and a `news_delivery` ledger (migration 0009). Successful/previously handled representatives remain searchable for 30 days independently of the seven-day article cache. History is paginated per company; exceeding the safety budget holds delivery with an error instead of silently ignoring old history. A send attempt is reserved before contacting Telegram. Explicit `ok:false` replies remain retryable. Timeouts, malformed replies, or database failure after Telegram acceptance leave the attempt held rather than automatically resending a potentially delivered message. `/status` reports uncertain/stale attempts and the latest duplicate-suppression count; logs contain the matched public article URLs. Held attempts require investigation; they are not evidence of successful delivery. This favors avoiding duplicates over retrying ambiguous sends. It does not coordinate with separately running Termux bots or other deployments using another database.

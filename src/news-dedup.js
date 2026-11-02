@@ -34,8 +34,7 @@ function eventAnchors(value, ticker = '') {
   const withoutTicker = String(value || '').normalize('NFKC').toLowerCase()
     .split(String(ticker || '').normalize('NFKC').toLowerCase()).join(' ');
   const normalized = withoutTicker
-    .replace(/루디\s*(0[.]2|2[.]0)/g, 'rudi02')
-    .replace(/rudi\s*(0[.]2|2[.]0)/g, 'rudi02')
+    .replace(/(?:루디|ludi|rudi)\s*(\d+[.]\d+)/g, (_,version) => 'ludi'+version)
     .replace(/ls\s*(?:electric|일렉트릭)/g, 'ls일렉트릭')
     .replace(/인공지능/g, 'ai')
     .replace(/직류/g, 'dc')
@@ -122,6 +121,12 @@ export function sameNews(a, b) {
   const summarySimilarity = overlap(grams(ad.slice(0, 400)), grams(bd.slice(0, 400)));
   const ak = keywords(at), bk = keywords(bt);
   const shared = [...ak].filter(word => bk.has(word)).length;
+  const ag = grams(ad.slice(0,400)), bg = grams(bd.slice(0,400));
+  const contained = Math.min(ag.size,bg.size) >= 35
+    && [...ag].filter(g=>bg.has(g)).length / Math.min(ag.size,bg.size) >= 0.9;
+  const anchorsA=eventAnchors(a.title,a.ticker), anchorsB=eventAnchors(b.title,b.ticker);
+  const meaningful=[...anchorsA].filter(v=>anchorsB.has(v));
+  if (contained && meaningful.length >= 2 && titleSimilarity >= 0.25) return true;
   // Different outlets frequently paraphrase the headline and publish unrelated boilerplate excerpts.
   // Require multiple shared informative headline anchors before ignoring excerpt divergence.
   if (shared >= 2 && Math.min(at.length, bt.length) >= 18 && titleSimilarity >= 0.74) return true;

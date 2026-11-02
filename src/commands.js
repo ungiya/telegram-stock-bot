@@ -68,6 +68,9 @@ export async function handleCommand(env, message, command) {
     reply = '클라우드 실행 중 · 뉴스 검색 주기 ' + newsPlan(companies).minutes + '분 (자동)\n종목: ' + companies.size + '개\n뉴스 전송: ' + (state.paused ? '일시정지' : '켜짐');
     reply += '\n뉴스 필터 버전: 2026-11-02-RUDI-LUDI-v2';
     if (state.last_checked_ms) reply += '\n최근 검색: ' + new Date(state.last_checked_ms).toISOString() + '\n검색 성공: ' + state.last_checked_count + '개 · 발송: ' + state.last_sent_count + '건';
+    reply += '\n최근 중복 제외: ' + (state.last_duplicate_count || 0) + '건';
+    const held = await env.DB.prepare("SELECT count(*) AS n FROM news_delivery WHERE state='uncertain' OR (state='attempting' AND attempt_ms<?)").bind(Date.now()-300000).first();
+    if (held?.n) reply += '\n뉴스 전송 확인 불가: ' + held.n + '건 · 중복 방지를 위해 자동 재전송 보류';
     const reports = await env.DB.prepare('SELECT last_summary FROM report_runtime WHERE id = 1').first();
     reply += '\n리포트: 매일 08:00 / 18:00 / 23:00 (한국시간)부터 수집\n' + (reports?.last_summary || '첫 수집 대기 중');
     const kind = await env.DB.prepare('SELECT last_summary FROM kind_runtime WHERE id = 1').first();

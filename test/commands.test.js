@@ -7,7 +7,7 @@ import { runNewsCheck } from '../src/worker.js';
 
 function fixture(t, destination = '111') {
   const sql = new DatabaseSync(':memory:');
-  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql', '0005_news_dedup.sql', '0006_dart.sql', '0007_news_schedule.sql', '0008_kind.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
+  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql', '0005_news_dedup.sql', '0006_dart.sql', '0007_news_schedule.sql', '0008_kind.sql', '0009_news_delivery.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
   const DB = {
     prepare(query) {
       const statement = (values = []) => ({
@@ -226,7 +226,7 @@ test('old dedup history expires and a failed delivery cannot suppress its retry'
   const now = Date.now();
   const insert = f.sql.prepare('INSERT INTO articles (url,ticker,title,description,pub_ms,discovered_ms,sent_ms) VALUES (?,?,?,?,?,?,?)');
   const title = '달바글로벌 미국 신규 매장 개장';
-  insert.run('https://example.com/old', '달바글로벌', title, '', now - 8 * 24 * 3600000, now - 8 * 24 * 3600000, now - 8 * 24 * 3600000);
+  insert.run('https://example.com/old', '달바글로벌', title, '', now - 31 * 24 * 3600000, now - 31 * 24 * 3600000, now - 31 * 24 * 3600000);
   insert.run('https://example.com/new', '달바글로벌', title, '', now, now, null);
   f.failSend(1);
   await assert.rejects(runNewsCheck(f.env), /temporary failure/);
@@ -352,4 +352,54 @@ test('other companies cannot crowd relevant duplicate history out of the 2000-ro
  insert.run('https://copy.example/ls','LS일렉트릭','LS일렉트릭 북미 변압기 생산능력 확대','',now,now,null);
  assert.equal((await runNewsCheck(f.env)).sent,0);
  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://copy.example/ls').duplicate_of,'https://original.example/ls');
+});
+
+test('delivery ledger survives loss of article cache and suppresses an outlet copy', async t => {
+ const f=fixture(t),now=Date.now();
+ const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+ const title='에이피알 미국 물류센터 증설';
+ insert.run('https://one.example/durable','에이피알',title,'',now,now);
+ assert.equal((await runNewsCheck(f.env)).sent,1);
+ f.sql.exec('DELETE FROM articles');
+ insert.run('https://two.example/durable','에이피알',title,'',now,now);
+ assert.equal((await runNewsCheck({...f.env})).sent,0);
+ assert.equal(f.replies.length,1);
+});
+test('same-company history beyond 2000 entries remains available to duplicate checking', async t => {
+ const f=fixture(t),now=Date.now();
+ const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms,sent_ms) VALUES(?,?,?,?,?,?,?)');
+ insert.run('https://old.example/representative','에이피알','에이피알 미국 물류센터 증설','',now-2*86400000,now,now-2*86400000);
+ for(let i=0;i<2001;i++)insert.run('https://other.example/'+i,'에이피알','다른 소식 '+i,'',now-1000,now,now-1000);
+ insert.run('https://copy.example/representative','에이피알','에이피알 미국 물류센터 증설','',now,now,null);
+ assert.equal((await runNewsCheck(f.env)).sent,0);
+});
+test('timeout after Telegram receives a news message is held instead of being resent', async t => {
+ const f=fixture(t),now=Date.now(),previous=globalThis.fetch;
+ f.sql.prepare('INSERT INTO articles(url,ticker,title,pub_ms,discovered_ms) VALUES(?,?,?,?,?)').run('https://uncertain.example/news','에이피알','에이피알 미국 물류센터 증설',now,now);
+ globalThis.fetch=async(url,options)=>{const response=await previous(url,options);if(String(url).endsWith('/sendMessage'))throw Error('response lost');return response;};
+ await assert.rejects(runNewsCheck(f.env),/response lost/);
+ globalThis.fetch=previous;
+ assert.equal(f.replies.length,1);
+ assert.equal(f.sql.prepare('SELECT state FROM news_delivery').get().state,'uncertain');
+ assert.equal((await runNewsCheck(f.env)).sent,0);
+ assert.equal(f.replies.length,1);
+ await command(f,'status');assert.match(f.replies.at(-1).text,/전송 확인 불가: 1건/);
+});
+test('DB failure after Telegram acceptance cannot cause a retry duplicate', async t => {
+ const f=fixture(t),now=Date.now();
+ f.sql.prepare('INSERT INTO articles(url,ticker,title,pub_ms,discovered_ms) VALUES(?,?,?,?,?)').run('https://dbfailure.example/news','에이피알','에이피알 미국 물류센터 증설',now,now);
+ const prepare=f.env.DB.prepare.bind(f.env.DB);let fail=true;
+ f.env.DB.prepare=q=>{if(fail && q.startsWith("UPDATE news_delivery SET state='sent'")){fail=false;throw Error('database temporarily unavailable');}return prepare(q);};
+ await assert.rejects(runNewsCheck(f.env),/database temporarily unavailable/);
+ assert.equal(f.replies.length,1);
+ assert.equal((await runNewsCheck(f.env)).sent,0);
+ assert.equal(f.replies.length,1);
+});
+test('independent delivery lock prevents simultaneous loops sending two outlets of one story', async t => {
+ const f=fixture(t),now=Date.now();
+ const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,pub_ms,discovered_ms) VALUES(?,?,?,?,?)');
+ insert.run('https://parallel-one.example/news','에이피알','에이피알 미국 물류센터 증설',now,now);
+ insert.run('https://parallel-two.example/news','에이피알','에이피알 미국 물류센터 증설',now,now);
+ const results=await Promise.all([runNewsCheck(f.env),runNewsCheck(f.env)]);
+ assert.equal(results.reduce((n,r)=>n+r.sent,0),1);assert.equal(f.replies.length,1);
 });

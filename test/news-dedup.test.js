@@ -95,3 +95,11 @@ test('reported LS speech URL and rewritten coverage are covered without suppress
   assert.equal(coveredNewsEvent({...base,title,description:'구자균은 AI 전력난에 대응한 지능형 DC 전력망 구축이 필요하다고 강조했다.'}),null);
  assert.equal(coveredNewsEvent({...base,pub_ms:Date.parse('2027-01-01T00:00Z'),title:'구자균 AI 지능형 DC 전력망 해법'}),null);
 });
+
+test('short excerpt contained in a longer release is duplicate only with matching headline subjects', () => {
+ const intro='에이피알은 텍사스 물류센터를 확장해 현지 고객에게 상품을 더 빠르게 배송할 계획이라고 밝혔다.';
+ const a={ticker:'에이피알',title:'에이피알 텍사스 물류센터 확장…현지 배송 개선',description:intro};
+ const b={ticker:'에이피알',title:'에이피알, 텍사스 물류센터 키워 미국 고객 잡는다',description:intro+' 추가로 회사는 현지 유통망을 정비하고 물류 효율화를 추진한다. 관계자는 이번 시설 운영으로 고객 만족도를 높일 것이라고 설명했다. 북미 사업 확대를 뒷받침하는 장기 전략이다.'};
+ assert.equal(sameNews(a,b),true);
+ assert.equal(sameNews(a,{...b,title:'에이피알 텍사스 매장에 새 브랜드 입점'}),false);
+});

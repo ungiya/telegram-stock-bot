@@ -1,7 +1,8 @@
+import { withNewsDeliveryLock, findNewsDuplicate, deliverNewsOnce } from './news-delivery.js';
 import { KIND_CRON, runKindCheck } from "./kind.js";
 import { claimNewsSearch } from "./news-schedule.js";
 import { DART_CRON, runDartCheck } from "./dart.js";
-import { sameNews, coveredNewsEvent } from "./news-dedup.js";
+import { coveredNewsEvent } from "./news-dedup.js";
 import { REPORT_CRON, runReportCheck } from "./reports.js";
 import { liveWatchlist, pollCommands, withBotLock } from "./commands.js";
 import { newsAllowed, companyNewsAllowed, analystNewsExcluded } from "./filters.js";
@@ -150,6 +151,10 @@ export function queuedNewsExcluded(item) {
 }
 
 async function sendPending(env, now, companies) {
+  return withNewsDeliveryLock(env, renew => sendClaimedNews(env, now, companies, renew));
+}
+
+async function sendClaimedNews(env, now, companies, renew) {
   if (!companies.size) return 0;
   const active = [...companies.keys()];
   const activePlaceholders = active.map(() => "?").join(",");
@@ -172,53 +177,55 @@ async function sendPending(env, now, companies) {
   }
   const claimed = (rows.results || []).filter(item => !excluded(item))
     .sort((a, b) => a.pub_ms - b.pub_ms || a.url.localeCompare(b.url));
-  if (!claimed.length) return 0;
+  let duplicateCount = blocked.filter(item => coveredNewsEvent(item)).length;
+  if (!claimed.length) {
+    await env.DB.prepare('UPDATE bot_runtime SET last_duplicate_count=? WHERE id=1').bind(duplicateCount).run();
+    return 0;
+  }
   const links = claimed.map((item) => item.url);
   const placeholders = links.map(() => "?").join(", ");
   let sent = 0;
   try {
-    // Durable history also covers other outlets arriving on later cron runs.
-    // Suppressed copies cannot become representatives and cause similarity chains.
-    const historyTickers = [...new Set(claimed.map(item => item.ticker))];
-    const historyPlaceholders = historyTickers.map(() => '?').join(',');
-    const history = (await env.DB.prepare(
-      "SELECT url, ticker, title, description FROM articles " +
-      "WHERE sent_ms IS NOT NULL AND duplicate_of IS NULL AND pub_ms >= ? " +
-      "AND ticker IN (" + historyPlaceholders + ") ORDER BY pub_ms DESC LIMIT 2000"
-    ).bind(now - 7 * 24 * 60 * 60 * 1000, ...historyTickers).all()).results || [];
     for (const item of claimed) {
       const covered = coveredNewsEvent(item);
-      const duplicate = covered ? { url: covered } : history.find(previous => sameNews(item, previous));
+      const duplicate = covered ? { url: covered } : await findNewsDuplicate(env,item,Date.now(),renew);
       if (duplicate) {
+        duplicateCount++;
+        console.log('News duplicate suppressed', JSON.stringify({url:item.url,matched:duplicate.url}));
         await env.DB.prepare(
           "UPDATE articles SET sent_ms = ?, duplicate_of = ?, lease_until_ms = NULL WHERE url = ?"
         ).bind(now, duplicate.url, item.url).run();
         continue;
       }
       if (sent) await new Promise(resolve => setTimeout(resolve, 1100));
-      const response = await fetch(
-        TELEGRAM_API + "/bot" + env.TELEGRAM_BOT_TOKEN + "/sendMessage",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: env.TELEGRAM_CHAT_ID,
-            text: formatTelegramMessage(item),
-            link_preview_options: { is_disabled: false, url: item.url, prefer_large_media: true },
-          }),
-          signal: AbortSignal.timeout(8000),
+      await renew();
+      const delivered = await deliverNewsOnce(env, item, async () => {
+        const response = await fetch(
+          TELEGRAM_API + "/bot" + env.TELEGRAM_BOT_TOKEN + "/sendMessage",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: env.TELEGRAM_CHAT_ID,
+              text: formatTelegramMessage(item),
+              link_preview_options: { is_disabled: false, url: item.url, prefer_large_media: true },
+            }),
+            signal: AbortSignal.timeout(8000),
+          }
+        );
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          const failure = new Error("Telegram API status " + response.status + ": " + (data.description || "unknown"));
+          failure.definitelyNotSent = data.ok === false;
+          throw failure;
         }
-      );
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        throw new Error("Telegram API status " + response.status + ": " + (data.description || "unknown"));
-      }
+      }, Date.now());
       await env.DB.prepare(
         "UPDATE articles SET sent_ms = ?, lease_until_ms = NULL WHERE url = ?"
       ).bind(now, item.url).run();
-      sent++;
-      history.push(item);
+      if (delivered) sent++;
     }
+    await env.DB.prepare('UPDATE bot_runtime SET last_duplicate_count=? WHERE id=1').bind(duplicateCount).run();
     return sent;
   } catch (error) {
     await env.DB.prepare(
@@ -250,6 +257,7 @@ export async function runNewsCheck(env, scheduledAt = Date.now(), deadline = Dat
   await env.DB.prepare("UPDATE bot_runtime SET last_checked_ms = ?, last_checked_count = ?, last_sent_count = ? WHERE id = 1").bind(now, succeeded, sent).run();
   // Retain one week of deduplication history, with a light cleanup every 6 hours.
   if (Math.floor((state.last_checked_ms || 0) / 21600000) !== Math.floor(now / 21600000)) {
+    await env.DB.prepare("DELETE FROM news_delivery WHERE attempt_ms < ? AND state = 'sent'").bind(now - 30 * 86400000).run();
     await env.DB.prepare("DELETE FROM articles WHERE pub_ms < ?")
       .bind(now - 7 * 24 * 60 * 60 * 1000).run();
   }
