@@ -178,9 +178,9 @@ export function reportedKiffLaunch(item) {
   if (item.ticker !== '크래프톤') return false;
   try {
     const url = new URL(item.url);
-    const host = url.hostname.toLowerCase().replace(/^www\\./,'');
+    const host = url.hostname.toLowerCase().replace(/^www\./,'');
     if (host === 'thedailypost.kr' &&
-        url.pathname.replace(/\\/$/,'') === '/news/articleView.html' &&
+        url.pathname.replace(/\/$/,'') === '/news/articleView.html' &&
         url.searchParams.get('idxno') === '116597') return true;
   } catch { /* Continue to headline-based matching for syndicated stories. */ }
   const published = Number(item.pub_ms ?? item.publishedAt);
@@ -189,13 +189,13 @@ export function reportedKiffLaunch(item) {
       published >= Date.parse('2026-11-20T00:00:00+09:00')) return false;
   const title = String(item.title || '').normalize('NFKC').toLowerCase();
   const body = title + ' ' + String(item.description || '').normalize('NFKC').toLowerCase();
-  const kiff = /(?:\\bkiff\\b|키프)/i;
+  const kiff = /(?:\bkiff\b|키프)/i;
   if (!kiff.test(body)) return false;
   // A genuinely new milestone remains alertable even when it mentions Kiff.
-  const development = /수주|공급\\s*계약|신규\\s*계약|계약\\s*체결|투자\\s*유치|인수|합병|지분|매출|실적|영업이익|유료\\s*가입자|이용자\\s*(?:수|증가)|출시\\s*성과|매출액|신규\\s*국가|해외\\s*출시|글로벌\\s*출시|확대\\s*출시|철회|취소|중단|정정|소송|신규\\s*아티스트|추가\\s*아티스트|후속\\s*출시/.test(title);
+  const development = /수주|공급\s*계약|신규\s*계약|계약\s*체결|투자\s*유치|인수|합병|지분|매출|실적|영업이익|유료\s*가입자|이용자\s*(?:수|증가)|출시\s*성과|매출액|신규\s*국가|해외\s*출시|글로벌\s*출시|확대\s*출시|철회|취소|중단|정정|소송|신규\s*아티스트|추가\s*아티스트|후속\s*출시/.test(title);
   if (development) return false;
-  const launch = /출시|선보|공개|론칭|런칭|시작|개시|상용화|출범|오픈|서비스\\s*(?:개시|시작|출시|공개)|사업\\s*확장|시장\\s*진출|참전/.test(title);
-  const topic = /캐릭터|챗|채팅|케이\\s*팝|k\\s*-?\\s*pop|k팝|인공지능|\\bai\\b|피프티피프티|fifty\\s*fifty|웨니/.test(body);
+  const launch = /출시|선보|공개|론칭|런칭|시작|개시|상용화|출범|오픈|서비스\s*(?:개시|시작|출시|공개)|사업\s*확장|시장\s*진출|참전/.test(title);
+  const topic = /캐릭터|챗|채팅|케이\s*팝|k\s*-?\s*pop|k팝|인공지능|\bai\b|피프티피프티|fifty\s*fifty|웨니/.test(body);
   return launch && topic && (kiff.test(title) || /크래프톤/.test(title));
 }
 
