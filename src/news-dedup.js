@@ -1,3 +1,4 @@
+import { clinicalRelation } from './clinical-events.js';
 // Compare recent stories locally, without paid services or extra HTTP requests.
 function text(value, ticker) {
   let result = String(value || '').normalize('NFKC').toLowerCase()
@@ -81,9 +82,10 @@ function facts(value) {
   }
   return groups;
 }
-function conflictingFacts(a, b) {
+function conflictingFacts(a, b, allowed = null) {
   const af = facts(a), bf = facts(b);
   for (const [unit, numbers] of af) {
+    if (allowed && !allowed.has(unit)) continue;
     const other = bf.get(unit);
     if (other && ![...numbers].some(n => other.has(n))) return true;
   }
@@ -100,7 +102,11 @@ export function sameNews(a, b) {
   if (conflictingFacts(a.title, b.title)) return false;
   const aFlags = eventFlags(a.title), bFlags = eventFlags(b.title);
   if (aFlags.some((flag, i) => flag !== bFlags[i])) return false;
-  if (conflictingFacts(a.description, b.description)) return false;
+  const clinical = clinicalRelation(a, b);
+  if (clinical !== null) return clinical;
+  // Incidental dates and unrelated endpoints in summaries do not identify a new event.
+  // Material financial amounts and reporting-quarter changes still do.
+  if (conflictingFacts(a.description, b.description, new Set(['amount', '분기']))) return false;
   if (at === bt) return true;
   if (matchingEvent(a, b)) return true;
   const titleSimilarity = overlap(grams(at), grams(bt));
