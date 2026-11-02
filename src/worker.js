@@ -167,8 +167,8 @@ async function sendPending(env, now, companies) {
   const blocked = (rows.results || []).filter(excluded);
   if (blocked.length) {
     await env.DB.batch(blocked.map(item => env.DB.prepare(
-      "UPDATE articles SET sent_ms = ?, lease_until_ms = NULL WHERE url = ?"
-    ).bind(now, item.url)));
+      "UPDATE articles SET sent_ms = ?, duplicate_of = ?, lease_until_ms = NULL WHERE url = ?"
+    ).bind(now, coveredNewsEvent(item), item.url)));
   }
   const claimed = (rows.results || []).filter(item => !excluded(item))
     .sort((a, b) => a.pub_ms - b.pub_ms || a.url.localeCompare(b.url));
