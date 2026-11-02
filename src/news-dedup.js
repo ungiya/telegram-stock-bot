@@ -133,6 +133,33 @@ export function sameNews(a, b) {
 // Suppress its syndicated coverage even when the original has aged out of
 // history or a publisher supplies a completely different/empty excerpt.
 // Date bounds and follow-up exclusions prevent permanent company/person blacklists.
+
+// A confirmed Oct 30/Nov 2 press announcement already delivered to the user.
+// Normalize the actual English branding "Ludi", plus the earlier "Rudi" typo.
+// Preserve future model releases, contracts, earnings and other real updates.
+export function reportedRudiRelease(item) {
+  if (item.ticker !== '크래프톤') return false;
+  const published = Number(item.pub_ms ?? item.publishedAt);
+  if (!Number.isFinite(published) ||
+      published < Date.parse('2026-10-29T00:00:00+09:00') ||
+      published >= Date.parse('2026-11-16T00:00:00+09:00')) return false;
+  const title = String(item.title || '').normalize('NFKC').toLowerCase();
+  const description = String(item.description || '').normalize('NFKC').toLowerCase();
+  const body = title + ' ' + description;
+  // A future release/version or a new material milestone is not a repeat.
+  const followup = /(?:루디|ludi|rudi)\s*(?:0[.]3|1[.]0|2[.]0)|(?:신규|추가|새로운)\s*(?:계약|투자|공급)|계약\s*체결|수주|양산|상용화|정식\s*출시|실적|영업이익|매출|인수합병|지분\s*인수|승인|특허\s*등록|철회|취소|정정|소송/i;
+  // "2.0" was a shorthand in discussion, but actual November release is 0.2.
+  // Do not suppress a genuine version 2.0 announcement.
+  if (followup.test(title)) return false;
+  const target = /(?:루디|ludi|rudi)\s*0\s*[.]?\s*2(?!\d)/i;
+  if (target.test(title)) return true;
+  // A rewritten headline may omit the model number while its article summary
+  // still describes exactly this announcement.
+  const subject = /루도\s*로보틱스|ludo\s*robotics|로봇(?:용)?\s*(?:인공지능|ai)|사회적\s*지능|로보틱스/i;
+  const release = /공개|발표|선보|시연|개발|사회적\s*지능|사람(?:과|의)\s*(?:협력|의도)|손짓|제스처/i;
+  return target.test(body) && subject.test(title) && release.test(title);
+}
+
 export function coveredNewsEvent(item) {
   // This immutable URL was explicitly reported as already received.
   try {
@@ -145,17 +172,8 @@ export function coveredNewsEvent(item) {
     || published >= Date.parse('2026-11-14T00:00:00+09:00')) return null;
   const title = String(item.title || '').normalize('NFKC').toLowerCase();
   const body = title + ' ' + String(item.description || '').normalize('NFKC').toLowerCase();
-  if (item.ticker === '크래프톤') {
-    // The Oct 30 BARS announcement is syndicated as '루디 0.2', 'RUDI 0.2',
-    // or '로봇 AI 사회적 지능', often with unrelated descriptions.
-    const rudi = /(?:루디|rudi)\s*(?:0[.]2|2[.]0)/i.test(body);
-    const context = /로봇|로보틱스|루도|ludo|사회적\s*지능|\bbars\b|버클리/i.test(body);
-    const release = /공개|발표|선보|시연|개발|탑재|진화|고도화|인간\s*의도|사람\s*의도|소통|협력/.test(body);
-    // Headline-only exemptions: genuine subsequent developments remain alertable.
-    const followup = /투자\s*유치|지분\s*인수|인수합병|양산|상용화\s*계약|상용화\s*확정|공급\s*계약|수주|매출|영업이익|실적|특허\s*등록|승인|소송|철회|취소|정정|루디\s*0[.]3|rudi\s*0[.]3/i.test(title);
-    if (rudi && context && release && !followup)
-      return 'event:krafton-rudi-0.2-bars-2026-10-30';
-  }
+  if (item.ticker === '크래프톤' && reportedRudiRelease(item))
+    return 'event:krafton-rudi-0.2-bars-2026-10-30';
   if (item.ticker === 'LS일렉트릭') {
     const speaker = /구자균/.test(body);
     const ai = /인공지능|\bai\b/.test(body);
