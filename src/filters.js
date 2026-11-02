@@ -62,11 +62,26 @@ export function analystNewsExcluded(title, description = '') {
     (analystTargetPrice.test(excerpt) || analystRating.test(excerpt));
 }
 
+// APR news is monitored for material business developments, not repeated
+// brand publicity. Headline-only matching prevents an incidental sales figure
+// in a promotional excerpt from bypassing the advertising filter.
+export function promotionalNewsExcluded(ticker, title, description = '') {
+  if (ticker !== '에이피알') return false;
+  const headline = String(title || '').normalize('NFKC');
+  const advertising = /홍보|광고|캠페인|앰버서더|홍보대사|브랜드\s*(?:모델|영상|행사|체험|스토리)|인플루언서|크리에이터|셀럽|팬\s*미팅|체험단|뷰티\s*(?:클래스|체험|이벤트|박람회)|팝업|기획전|할인|쿠폰|프로모션|라이브\s*커머스|언박싱|화보|콜라보|협업\s*컬렉션|어워즈|수상|인기\s*(?:브랜드|상품)|완판|품절|베스트셀러|랭킹|순위|화제|호평|선정|성료|1위|첫\s*방송|유튜브|sns|틱톡|인스타그램|k[\s-]*뷰티\s*(?:열풍|인기)/i;
+  if (!advertising.test(headline)) return false;
+  // Preserve objectively material news even when the headline also says
+  // "campaign" or "ranking" in passing; don't rescue vague hype in an excerpt.
+  const hardEvent = /(?:분기|연간|연결|잠정)\s*(?:실적|매출)|(?:실적|영업이익|순이익|영업손익|당기순이익)\s*(?:발표|공시|증가|감소|흑자|적자)|매출\s*\d[\d,.]*\s*(?:조|억|만)\s*원|(?:수주|납품|공급)\s*계약|계약\s*체결|투자\s*유치|유상증자|무상증자|자사주|배당|인수합병|지분\s*인수|공장.{0,12}(?:증설|신설|착공|준공)|(?:새|신규|신)\s*(?:제품|기기|디바이스|서비스)\s*(?:출시|개발|공개)|(?:신제품|신기기|신사업)\s*(?:출시|공개|진출|개발)|(?:해외|현지)\s*(?:법인|공장)\s*(?:설립|신설)|(?:fda|식약처|ce)\s*(?:허가|승인)|특허\s*(?:등록|취득)|소송|행정\s*처분|리콜|대표이사\s*(?:사임|선임)|(?:새|신규)\s*국가\s*(?:진출|출시)/i;
+  return !hardEvent.test(headline);
+}
+
 export const norm = value => String(value).toLowerCase().replace(/[^\p{L}\p{N}_]/gu, "");
 export function newsAllowed(ticker, aliases, title, description = "") {
   const text = title + " " + description;
   if (!aliases.some(alias => norm(title).includes(norm(alias)))) return false;
   if (automatic.test(text)) return false;
+  if (promotionalNewsExcluded(ticker, title, description)) return false;
   if (analystNewsExcluded(title, description)) return false;
   if (!companyNewsAllowed(ticker, title, description)) return false;
   if (promotion.test(title) && !material.test(title)) return false;
