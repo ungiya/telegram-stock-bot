@@ -63,6 +63,9 @@ export function normalizeArticle(item, ticker, now, aliases = ALIASES[ticker] ||
   }
   const description = cleanTitle(item.description);
   if (!newsAllowed(ticker, aliases, title, description)) return null;
+  // Suppress repeatedly syndicated events before they enter the D1 send queue.
+  // Preserve the dated exceptions and follow-up protections in coveredNewsEvent.
+  if (coveredNewsEvent({ url, ticker, title, description, pub_ms: publishedAt })) return null;
   return { url, ticker, title, description, publishedAt };
 }
 
@@ -142,7 +145,8 @@ async function pollTopic(env, ticker, aliases, now, paused) {
 export function queuedNewsExcluded(item) {
   return blockedNewsSource(item.url) ||
     !companyNewsAllowed(item.ticker, item.title, item.description) ||
-    analystNewsExcluded(item.title, item.description);
+    analystNewsExcluded(item.title, item.description) ||
+    Boolean(coveredNewsEvent(item));
 }
 
 async function sendPending(env, now, companies) {
