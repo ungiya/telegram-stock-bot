@@ -403,3 +403,13 @@ test('independent delivery lock prevents simultaneous loops sending two outlets 
  const results=await Promise.all([runNewsCheck(f.env),runNewsCheck(f.env)]);
  assert.equal(results.reduce((n,r)=>n+r.sent,0),1);assert.equal(f.replies.length,1);
 });
+
+test('queued SK appointment round is suppressed but a different person still sends', async t=>{
+ const f=fixture(t),now=Date.parse('2026-11-02T01:00Z');t.mock.timers.enable({apis:['Date'],now});
+ const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+ insert.run('https://late.example/sk','sk이노베이션','SK이노베이션 전력 사업 강화…정승일 총괄사장 선임','',now,now);
+ insert.run('https://new.example/sk','sk이노베이션','SK이노베이션 김철수 사장 선임','',now+1,now);
+ assert.equal((await runNewsCheck(f.env)).sent,1);
+ assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/sk').duplicate_of,'event:sk-innovation-2027-personnel-2026-10-30');
+ assert.match(f.replies[0].text,/김철수/);
+});

@@ -1,3 +1,4 @@
+import { personnelRelation, reportedSkPersonnel } from './personnel-events.js';
 import { clinicalRelation } from './clinical-events.js';
 import { assetTransferRelation } from './asset-transfer-events.js';
 // Compare recent stories locally, without paid services or extra HTTP requests.
@@ -102,6 +103,8 @@ export function sameNews(a, b) {
   if (a.ticker !== b.ticker) return false;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
   if (!at || !bt) return false;
+  const personnel = personnelRelation(a,b);
+  if (personnel !== null) return personnel;
   const transferred = assetTransferRelation(a, b);
   if (transferred !== null) return transferred;
   if (conflictingFacts(a.title, b.title)) return false;
@@ -169,6 +172,7 @@ export function reportedRudiRelease(item) {
 }
 
 export function coveredNewsEvent(item) {
+  if (reportedSkPersonnel(item)) return 'event:sk-innovation-2027-personnel-2026-10-30';
   // This immutable URL was explicitly reported as already received.
   try {
     const url = new URL(item.url);
