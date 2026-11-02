@@ -63,3 +63,39 @@ test('corporate events are not hidden just because an excerpt cites an analyst',
   assert.equal(allow('무신사','무신사 IPO 예비심사 청구'),true);
   assert.equal(allow('에이피알','삼성증권, 에이피알 지분 인수'),true);
 });
+
+
+test('Musinsa designer hiring remains blocked even when headline mentions IPO, sales or expansion', () => {
+  const blocked = [
+    '무신사 스탠다드 김지용 크리에이티브 디렉터 선임',
+    '무신사 IPO 앞두고 김지용 CD 영입',
+    '지용킴 품은 무신사 스탠다드…글로벌 캐주얼로 체질 개선',
+    '무신사 새 디자이너 발탁…해외 진출 속도',
+    '무신사 스탠다드 새 디렉터 선임, 매출 2조 목표',
+    '무신사 글로벌 브랜드 협업 컬렉션 선보여 실적 성장 기대',
+    '무신사 패션 브랜드 매출 1조 돌파',
+    '무신사 할인 행사 매출 100억원 돌파',
+    '무신사 IPO 준비 중 브랜드 콜라보',
+    '무신사 스탠다드 해외 매장 오픈',
+    '무신사 뷰티 팝업스토어 오픈',
+    '무신사 새 시즌 룩북 화보',
+  ];
+  for (const title of blocked)
+    assert.equal(newsAllowed('무신사',['무신사'],title,'무신사의 기업가치, 상장과 매출 성장 내용도 언급했다.'),false,title);
+  assert.equal(newsAllowed('무신사',['무신사'],'무신사 새로운 도전',
+    '김지용 디자이너를 영입하고 패션 상품을 공개한다.'),false);
+});
+
+test('Musinsa material IPO, earnings and financing are still delivered', () => {
+  const accepted = [
+    '패션 플랫폼 무신사 IPO 예비심사 청구',
+    '무신사 상장예비심사 청구서 접수',
+    '무신사 3분기 영업이익 300억원 발표',
+    '무신사 지난해 연결 매출 1조원 기록',
+    '무신사 투자 유치 1000억원',
+    '무신사 대표이사 선임',
+  ];
+  for(const title of accepted)
+    assert.equal(newsAllowed('무신사',['무신사'],title,'패션 플랫폼의 기업 활동'),true,title);
+  assert.equal(newsAllowed('에이피알',['에이피알'],'에이피알 신제품 출시'),true);
+});
