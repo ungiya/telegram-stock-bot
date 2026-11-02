@@ -1,4 +1,5 @@
 import { NEWS_POLICY_VERSION } from './news-policy-version.js';
+import { rawPublisherObservation, recordPublisherObservations } from './publishers.js';
 import { withNewsDeliveryLock, findNewsDuplicate, deliverNewsOnce } from './news-delivery.js';
 import { KIND_CRON, runKindCheck } from "./kind.js";
 import { claimNewsSearch } from "./news-schedule.js";
@@ -124,6 +125,21 @@ async function pollTopic(env, ticker, aliases, now, paused) {
   ).bind(ticker).first();
 
   const normalized = items.map(item => normalizeArticle(item, ticker, now, aliases));
+  // Record first-seen original publisher URLs even when a news policy rejects
+  // them. This telemetry is independent of news-delivery decisions.
+  // A missing migration must never stop live alerts.
+  try {
+    const observations = items.map((item,i) => rawPublisherObservation(item,now,normalized[i],
+      (_raw,url,pub_ms) => {
+        if (blockedNewsSource(item.originallink) || blockedNewsSource(item.link)) return 'blocked_source';
+        if (coveredNewsEvent({ticker,url,pub_ms,title:cleanTitle(item.title),description:cleanTitle(item.description)}))
+          return 'known_event';
+        return 'content_filter';
+      },canonicalUrl));
+    await recordPublisherObservations(env,observations,now);
+  } catch {
+    console.warn('Publisher statistics collection unavailable; news delivery continues');
+  }
   const articles = normalized.filter(item => item && (!baseline || item.publishedAt >= now - FRESHNESS_MS));
 
   const writes = articles.map((item) => env.DB.prepare(
@@ -262,6 +278,12 @@ export async function runNewsCheck(env, scheduledAt = Date.now(), deadline = Dat
     await env.DB.prepare("DELETE FROM news_delivery WHERE attempt_ms < ? AND state = 'sent'").bind(now - 30 * 86400000).run();
     await env.DB.prepare("DELETE FROM articles WHERE pub_ms < ?")
       .bind(now - 7 * 24 * 60 * 60 * 1000).run();
+    try {
+      await env.DB.prepare("DELETE FROM news_publisher_seen WHERE first_seen_ms < ?")
+        .bind(now - 30 * 24 * 60 * 60 * 1000).run();
+    } catch {
+      console.warn('Publisher statistics cleanup unavailable');
+    }
   }
   console.log(NEWS_POLICY_VERSION + " filtered=" + filtered + ". Checked " + succeeded + "/" + companies.size + " tickers. Sent " + sent + " articles.");
   return { checked: succeeded, sent };
