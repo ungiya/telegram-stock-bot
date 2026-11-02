@@ -80,3 +80,18 @@ test('PGS and global symposium aliases identify already received event despite r
   assert.equal(coveredNewsEvent({...base,title:'파마리서치 사우디아라비아 론칭 심포지엄 개최'}),null);
   assert.equal(coveredNewsEvent({...base,title:'파마리서치 PGS 개최',pub_ms:Date.parse('2027-11-02T00:00Z')}),null);
 });
+
+test('LS Electric DC/직류 and English company names normalize consistently', () => {
+ const base={ticker:'LS일렉트릭',description:'구자균 회장은 AI 전력난에 대응하기 위한 지능형 직류 전력망 구축이 필요하다고 강조했다.'};
+ assert.equal(sameNews({...base,title:'구자균 LS일렉트릭 회장 AI 전력난 해법은 지능형 DC 전력망'}, {...base,title:'구자균 LS ELECTRIC 회장 AI 전력난 해법은 지능형 직류 전력망'}),true);
+});
+test('reported LS speech URL and rewritten coverage are covered without suppressing new contracts', async () => {
+ const {coveredNewsEvent}=await import('../src/news-dedup.js');
+ const base={ticker:'LS일렉트릭',pub_ms:Date.parse('2026-11-02T01:00Z'),description:''};
+ for(const title of ['구자균 LS일렉트릭 회장 “AI 전력난 해법은 지능형 DC 전력망”','LS일렉트릭 구자균, 인공지능 전력 수요 대응 직류 전력망 구축 필요'])
+  assert.equal(coveredNewsEvent({...base,title}),'event:ls-electric-koo-ai-dc-grid-2026-11-02');
+ assert.equal(coveredNewsEvent({url:'https://www.viva100.com/article/20261102500194?utm_source=naver'}),'event:ls-electric-koo-ai-dc-grid-2026-11-02');
+ for(const title of ['LS일렉트릭 AI 데이터센터 직류 전력망 공급 계약 체결','LS일렉트릭 구자균 AI 전력망 신제품 출시','LS일렉트릭 영업이익 증가'])
+  assert.equal(coveredNewsEvent({...base,title,description:'구자균은 AI 전력난에 대응한 지능형 DC 전력망 구축이 필요하다고 강조했다.'}),null);
+ assert.equal(coveredNewsEvent({...base,pub_ms:Date.parse('2027-01-01T00:00Z'),title:'구자균 AI 지능형 DC 전력망 해법'}),null);
+});

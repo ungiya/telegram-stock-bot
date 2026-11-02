@@ -334,3 +334,22 @@ test('queued PGS article is suppressed without history, but financial news menti
   assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/pgs').duplicate_of,'event:pharmaresearch-pgs-2026-10');
   assert.match(f.replies[0].text,/영업이익/);
 });
+
+test('reported LS speech is removed from queue without history and new orders survive', async t => {
+ const f=fixture(t),now=Date.parse('2026-11-02T01:00Z');t.mock.timers.enable({apis:['Date'],now});
+ const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+ insert.run('https://www.viva100.com/article/20261102500194','LS일렉트릭','구자균 LS일렉트릭 회장 “AI 전력난 해법은 지능형 DC 전력망”','',now,now);
+ insert.run('https://new.example/order','LS일렉트릭','LS일렉트릭 직류 전력망 공급 계약 체결','구자균 AI 전력난 해법은 지능형 DC 전력망',now+1,now);
+ assert.equal((await runNewsCheck(f.env)).sent,1);
+ assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://www.viva100.com/article/20261102500194').duplicate_of,'event:ls-electric-koo-ai-dc-grid-2026-11-02');
+ assert.match(f.replies[0].text,/공급 계약/);
+});
+test('other companies cannot crowd relevant duplicate history out of the 2000-row comparison limit', async t => {
+ const f=fixture(t),now=Date.now();
+ const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms,sent_ms) VALUES(?,?,?,?,?,?,?)');
+ insert.run('https://original.example/ls','LS일렉트릭','LS일렉트릭 북미 변압기 생산능력 확대','',now-2*86400000,now,now);
+ for(let i=0;i<2001;i++) insert.run('https://busy.example/'+i,'에이피알','에이피알 별도 소식 '+i,'',now-1000,now,now);
+ insert.run('https://copy.example/ls','LS일렉트릭','LS일렉트릭 북미 변압기 생산능력 확대','',now,now,null);
+ assert.equal((await runNewsCheck(f.env)).sent,0);
+ assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://copy.example/ls').duplicate_of,'https://original.example/ls');
+});

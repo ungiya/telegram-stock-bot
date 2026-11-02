@@ -167,11 +167,13 @@ async function sendPending(env, now, companies) {
   try {
     // Durable history also covers other outlets arriving on later cron runs.
     // Suppressed copies cannot become representatives and cause similarity chains.
+    const historyTickers = [...new Set(claimed.map(item => item.ticker))];
+    const historyPlaceholders = historyTickers.map(() => '?').join(',');
     const history = (await env.DB.prepare(
       "SELECT url, ticker, title, description FROM articles " +
       "WHERE sent_ms IS NOT NULL AND duplicate_of IS NULL AND pub_ms >= ? " +
-      "AND ticker IN (" + activePlaceholders + ") ORDER BY pub_ms DESC LIMIT 2000"
-    ).bind(now - 7 * 24 * 60 * 60 * 1000, ...active).all()).results || [];
+      "AND ticker IN (" + historyPlaceholders + ") ORDER BY pub_ms DESC LIMIT 2000"
+    ).bind(now - 7 * 24 * 60 * 60 * 1000, ...historyTickers).all()).results || [];
     for (const item of claimed) {
       const covered = coveredNewsEvent(item);
       const duplicate = covered ? { url: covered } : history.find(previous => sameNews(item, previous));

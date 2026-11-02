@@ -4,6 +4,8 @@ function text(value, ticker) {
     .replace(/\[[^\]]*\]/g, ' ').replace(/\S+@\S+/g, ' ')
     .replace(/https?:\/\/\S+/g, ' ')
     .replace(/pharma\s*research\s+global\s+symposium|\bpgs\b|글로벌\s*심포지[엄움]/gi, '글로벌심포지엄')
+    .replace(/ls\s*(?:일렉트릭|electric)/g, 'ls일렉트릭')
+    .replace(/직류\s*\(\s*dc\s*\)|\bdc\b/g, '직류')
     .replace(/인공지능/g, 'ai').replace(/데이터\s*센터/g, '데이터센터')
     .replace(/업무\s*협약|전략적\s*파트너십|파트너십|맞손|손잡(?:았다|는다|고|아)|협력/g, '협약');
   if (ticker) result = result.split(ticker.toLowerCase()).join(' ');
@@ -79,11 +81,27 @@ export function sameNews(a, b) {
 // history or a publisher supplies a completely different/empty excerpt.
 // Date bounds and follow-up exclusions prevent permanent company/person blacklists.
 export function coveredNewsEvent(item) {
+  // This immutable URL was explicitly reported as already received.
+  try {
+    const url = new URL(item.url);
+    if (/^(?:www\.)?viva100\.com$/.test(url.hostname) && url.pathname === '/article/20261102500194')
+      return 'event:ls-electric-koo-ai-dc-grid-2026-11-02';
+  } catch { /* Fixtures and non-URL items still use content matching below. */ }
   const published = Number(item.pub_ms);
   if (!Number.isFinite(published) || published < Date.parse('2026-10-29T00:00:00+09:00')
     || published >= Date.parse('2026-11-14T00:00:00+09:00')) return null;
   const title = String(item.title || '').normalize('NFKC').toLowerCase();
   const body = title + ' ' + String(item.description || '').normalize('NFKC').toLowerCase();
+  if (item.ticker === 'LS일렉트릭') {
+    const speaker = /구자균/.test(body);
+    const ai = /인공지능|\bai\b/.test(body);
+    const dc = /직류|\bdc\b/.test(body);
+    const grid = /전력망|전력난|전력\s*수요|전력\s*인프라/.test(body);
+    const speech = /해법|강조|제언|제시|발언|필요|구축|지능형/.test(body);
+    const followup = /수주|공급\s*계약|계약\s*체결|신제품|출시|준공|착공|실적|영업이익|매출|목표주가|투자의견|정정|철회|취소|소송|해임|사임/.test(title);
+    return speaker && ai && dc && grid && speech && !followup
+      ? 'event:ls-electric-koo-ai-dc-grid-2026-11-02' : null;
+  }
   if (item.ticker === '파마리서치') {
     const pgs = /\bpgs\b|pharma\s*research\s+global\s+symposium|글로벌\s*심포지[엄움]/.test(body)
       || (/심포지[엄움]/.test(body) && /강릉|라카이|샌드파인/.test(body));
