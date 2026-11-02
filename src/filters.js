@@ -15,8 +15,11 @@ const musinsaCorporate = /기업공개|\bipo\b|상장|예비심사|심사청구|
 const musinsaFashion = /패션|코디|스타일링|룩북|컬렉션|디자이너|크리에이티브\s*디렉터|creative\s*director|\bcd\b|김지용|지용킴|jiyong\s*kim|화보|착장|의류|옷차림|슬랙스|스니커즈|운동화|후드|니트|데님|청바지|아우터|다운재킷|패딩|티셔츠|가을옷|겨울옷|신상품|신제품|캡슐|협업\s*상품|콜라보|팝업|런웨이|팬츠|드레스|맨투맨|캐주얼|웨어/i;
 export function companyNewsAllowed(ticker, title, description = '') {
   if (ticker !== '무신사') return true;
-  if (musinsaCorporate.test(title)) return true;
-  return !musinsaFashion.test(title + ' ' + description);
+  // Musinsa alerts are investment news, not consumer shopping/editorial news.
+  // A finance keyword buried in the description must never rescue a promotional headline.
+  const corporateTitle = /기업공개|\bipo\b|상장|예비심사|심사청구|기업가치|공모가|공모주|실적|영업이익|순이익|매출|거래액|투자\s*유치|지분\s*(인수|매각)|인수합병|합병|유상증자|전환사채|자사주|배당|대표이사|경영권|횡령|배임|소송|과징금|행정\s*처분|회생|파산|구조조정|해외\s*(진출|사업)|사업\s*(재편|매각|인수)|신규\s*투자|자금\s*조달|인적\s*분할|물적\s*분할|최대주주|재무|적자|흑자|증권신고서|기관\s*투자자|주관사|시리즈\s*[a-z]/i;
+  const consumerHeadline = /할인|쿠폰|기획전|타임딜|특가|쇼핑\s*혜택|증정|사은품|구매\s*혜택|프로모션|체험단|경품|선착순|팝업|화보|룩북|코디|스타일링|컬렉션|신상|신제품|신상품|브랜드\s*(협업|론칭|출시)|콜라보|스니커즈|패딩|니트|데님|티셔츠|패션\s*트렌드|쇼핑\s*추천|입점\s*상품/i;
+  return corporateTitle.test(title) && !consumerHeadline.test(title);
 }
 
 export const norm = value => String(value).toLowerCase().replace(/[^\p{L}\p{N}_]/gu, "");
