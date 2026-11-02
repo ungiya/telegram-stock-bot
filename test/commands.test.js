@@ -323,3 +323,14 @@ test('fashion filter also discards queued Musinsa articles created before deploy
   assert.match(f.replies[0].text,/IPO/);
   assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url=?').get('https://queued.example/fashion').sent_ms);
 });
+
+test('queued PGS article is suppressed without history, but financial news mentioning PGS survives', async t => {
+  const f=fixture(t),now=Date.parse('2026-11-02T01:00Z');
+  t.mock.timers.enable({apis:['Date'],now});
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  insert.run('https://late.example/pgs','파마리서치','파마리서치 PGS 개최…글로벌 재생의학 리더십 강화','',now,now);
+  insert.run('https://new.example/earnings','파마리서치','파마리서치 영업이익 증가','PGS 행사도 개최했다.',now+1,now);
+  assert.equal((await runNewsCheck(f.env)).sent,1);
+  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/pgs').duplicate_of,'event:pharmaresearch-pgs-2026-10');
+  assert.match(f.replies[0].text,/영업이익/);
+});

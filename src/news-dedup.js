@@ -3,6 +3,7 @@ function text(value, ticker) {
   let result = String(value || '').normalize('NFKC').toLowerCase()
     .replace(/\[[^\]]*\]/g, ' ').replace(/\S+@\S+/g, ' ')
     .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/pharma\s*research\s+global\s+symposium|\bpgs\b|글로벌\s*심포지[엄움]/gi, '글로벌심포지엄')
     .replace(/인공지능/g, 'ai').replace(/데이터\s*센터/g, '데이터센터')
     .replace(/업무\s*협약|전략적\s*파트너십|파트너십|맞손|손잡(?:았다|는다|고|아)|협력/g, '협약');
   if (ticker) result = result.split(ticker.toLowerCase()).join(' ');
@@ -83,6 +84,18 @@ export function coveredNewsEvent(item) {
     || published >= Date.parse('2026-11-14T00:00:00+09:00')) return null;
   const title = String(item.title || '').normalize('NFKC').toLowerCase();
   const body = title + ' ' + String(item.description || '').normalize('NFKC').toLowerCase();
+  if (item.ticker === '파마리서치') {
+    const pgs = /\bpgs\b|pharma\s*research\s+global\s+symposium|글로벌\s*심포지[엄움]/.test(body)
+      || (/심포지[엄움]/.test(body) && /강릉|라카이|샌드파인/.test(body));
+    // PGS in a background paragraph must not suppress genuinely new financial,
+    // regulatory, clinical, product or analyst developments in the headline.
+    const followup = /영업이익|순이익|실적|매출|목표\s*주가|투자\s*의견|매수|매도|증권|리포트|임상\s*[123]\s*상|임상\s*(결과|성공|실패)|유효성|품목\s*허가|승인|fda|수주|공급\s*계약|기술\s*(이전|수출)|인수|합병|출시|신제품|소송|취소|중단|정정/.test(title);
+    // Do not merge a different year's/edition's symposium into the known event.
+    const anotherYear = /20\d{2}/.test(title) && !/2026/.test(title);
+    const anotherEdition = /제\s*\d+\s*회/.test(title) && !/제\s*7\s*회/.test(title);
+    return pgs && !followup && !anotherYear && !anotherEdition
+      ? 'event:pharmaresearch-pgs-2026-10' : null;
+  }
   if (item.ticker === '무신사') {
     const person = /김지용|지용킴|jiyong\s*kim/.test(body);
     const appointment = /선임|영입|발탁|임명|합류|품(?:은|었다|다)|새\s*(?:디렉터|cd)/.test(body);

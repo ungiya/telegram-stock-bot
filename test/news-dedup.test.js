@@ -68,3 +68,15 @@ test('known Musinsa CD appointment groups person and role aliases but preserves 
   assert.equal(coveredNewsEvent({...base,title:'무신사 디자인 혁신 위해 새 디렉터 영입',description:'지용킴 김지용을 크리에이티브 디렉터로 선임했다.'}),'event:musinsa-jiyongkim-cd-2026-10-30');
   assert.equal(coveredNewsEvent({...base,title:'무신사 김지용 선임',pub_ms:Date.parse('2027-01-01T00:00Z')}),null);
 });
+
+test('PGS and global symposium aliases identify already received event despite rewritten titles', async () => {
+  const {coveredNewsEvent}=await import('../src/news-dedup.js');
+  const base={ticker:'파마리서치',pub_ms:Date.parse('2026-11-02T01:00Z'),description:''};
+  for(const title of ['파마리서치 글로벌 심포지엄 성료','파마리서치 글로벌 심포지움 성료','파마리서치 PGS 개최…재생의학 글로벌 리더십 강화','파마리서치 PharmaResearch Global Symposium 의료진 교류','파마리서치 강릉 심포지엄 개최'])
+    assert.equal(coveredNewsEvent({...base,title}),'event:pharmaresearch-pgs-2026-10');
+  assert.equal(coveredNewsEvent({...base,title:'파마리서치 재생의학 리더십 강화',description:'글로벌 의료진이 참여한 PGS를 개최했다.'}),'event:pharmaresearch-pgs-2026-10');
+  for(const title of ['파마리서치 PGS에서 임상 3상 결과 발표','파마리서치 영업이익 증가','파마리서치 목표주가 상향','파마리서치 신제품 출시','파마리서치 2027 PGS 개최','파마리서치 제8회 글로벌 심포지엄 개최'])
+    assert.equal(coveredNewsEvent({...base,title,description:'PGS에서 재생의학을 논의했다.'}),null);
+  assert.equal(coveredNewsEvent({...base,title:'파마리서치 사우디아라비아 론칭 심포지엄 개최'}),null);
+  assert.equal(coveredNewsEvent({...base,title:'파마리서치 PGS 개최',pub_ms:Date.parse('2027-11-02T00:00Z')}),null);
+});
