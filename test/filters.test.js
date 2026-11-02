@@ -37,3 +37,29 @@ test('Musinsa fashion/editorial and designer appointments are excluded; corporat
     assert.equal(newsAllowed('무신사',['무신사'],title,'패션 플랫폼 무신사 소식'),true);
   assert.equal(newsAllowed('에이피알',['에이피알'],'에이피알 신제품 출시'),true);
 });
+
+
+test('news blocks target-price revisions and analyst commentary for all tickers', () => {
+  const allowed=(ticker,title,description='') => newsAllowed(ticker,[ticker],title,description);
+  for(const title of [
+    '에이피알 목표주가 21만원으로 상향',
+    '에이피알 목표가 하향 조정',
+    '에이피알 목표주가 유지…증권가 전망',
+    '에이피알 투자의견 중립에서 매수로 상향',
+    '하나증권 에이피알 매수 의견 유지',
+    'KB증권 에이피알 실적 개선 전망',
+    '에이피알 추천주 부상…증권사 분석',
+  ]) assert.equal(allowed('에이피알',title),false,title);
+  assert.equal(allowed('크래프톤','크래프톤 목표가 상향'),false);
+  assert.equal(allowed('무신사','무신사 투자의견 매수 유지'),false);
+  assert.equal(allowed('에이피알','에이피알 상승 여력 커졌다','하나증권이 목표주가를 상향했다'),false);
+});
+
+test('corporate events are not hidden just because an excerpt cites an analyst', () => {
+  const allow=(ticker,title,description='')=>newsAllowed(ticker,[ticker],title,description);
+  assert.equal(allow('에이피알','에이피알 3분기 영업이익 1606억원 기록','하나증권이 목표주가를 하향했다'),true);
+  assert.equal(allow('에이피알','에이피알 공급 계약 체결','증권가는 성장할 것으로 전망했다'),true);
+  assert.equal(allow('디앤디파마텍','디앤디파마텍 DD01 임상 2상 결과 발표','하나증권이 목표가를 상향했다'),true);
+  assert.equal(allow('무신사','무신사 IPO 예비심사 청구'),true);
+  assert.equal(allow('에이피알','삼성증권, 에이피알 지분 인수'),true);
+});
