@@ -1,4 +1,5 @@
 import { clinicalRelation } from './clinical-events.js';
+import { assetTransferRelation } from './asset-transfer-events.js';
 // Compare recent stories locally, without paid services or extra HTTP requests.
 function text(value, ticker) {
   let result = String(value || '').normalize('NFKC').toLowerCase()
@@ -99,6 +100,8 @@ export function sameNews(a, b) {
   if (a.ticker !== b.ticker) return false;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
   if (!at || !bt) return false;
+  const transferred = assetTransferRelation(a, b);
+  if (transferred !== null) return transferred;
   if (conflictingFacts(a.title, b.title)) return false;
   const aFlags = eventFlags(a.title), bFlags = eventFlags(b.title);
   if (aFlags.some((flag, i) => flag !== bFlags[i])) return false;
