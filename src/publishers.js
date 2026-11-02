@@ -18,6 +18,9 @@ const NAMES = {
   'vegannews.co.kr': '비건뉴스', 'insight.co.kr': '인사이트',
   'pinpointnews.co.kr': '핀포인트뉴스', 'metroseoul.co.kr': '메트로신문',
   'emetro.co.kr': '메트로신문', '4th.kr': '포쓰저널',
+  'newsquest.co.kr': '뉴스퀘스트', 'megaeconomy.co.kr': '메가경제',
+  'hellot.net': '헬로티(헬로스톡)', 'ttlnews.com': 'TTL뉴스',
+  'economytalk.kr': '이코노미톡뉴스',
 };
 export function publisherDomain(value) {
   try {
