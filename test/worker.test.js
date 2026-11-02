@@ -194,3 +194,11 @@ test('Kiff launch is excluded both when collected from Naver and when waiting in
     title:'크래프톤 Kiff 글로벌 신규 국가 출시 계약 체결',
   },'크래프톤',now),'material follow-up must remain eligible');
 });
+
+
+test('queued APR marketing articles are suppressed even if saved before the new filter', async () => {
+  const {queuedNewsExcluded}=await import('../src/worker.js');
+  const item={ticker:'에이피알',title:'에이피알 메디큐브 뷰티 인기 1위 캠페인 성료',description:'미국 매출 확대 기대',url:'https://example.com/apr-pr',pub_ms:Date.now()};
+  assert.equal(queuedNewsExcluded(item),true);
+  assert.equal(queuedNewsExcluded({...item,title:'에이피알 3분기 매출 7731억원 기록'}),false);
+});
