@@ -7,7 +7,7 @@ import { runNewsCheck } from '../src/worker.js';
 
 function fixture(t, destination = '111') {
   const sql = new DatabaseSync(':memory:');
-  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql', '0005_news_dedup.sql', '0006_dart.sql', '0007_news_schedule.sql', '0008_kind.sql', '0009_news_delivery.sql', '0010_news_filter_count.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
+  for (const name of ['0001_init.sql', '0002_commands.sql', '0003_reports.sql', '0004_news_descriptions.sql', '0005_news_dedup.sql', '0006_dart.sql', '0007_news_schedule.sql', '0008_kind.sql', '0009_news_delivery.sql', '0010_news_filter_count.sql', '0011_news_publishers.sql']) sql.exec(readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
   const DB = {
     prepare(query) {
       const statement = (values = []) => ({
@@ -412,4 +412,24 @@ test('queued SK appointment round is suppressed but a different person still sen
  assert.equal((await runNewsCheck(f.env)).sent,1);
  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/sk').duplicate_of,'event:sk-innovation-2027-personnel-2026-10-30');
  assert.match(f.replies[0].text,/김철수/);
+});
+
+
+test('publisher command accepts Korean alias, pagination and requires authorization', async t => {
+  const f=fixture(t), now=Date.now();
+  await command(f,'publishers');
+  assert.match(f.replies.at(-1).text,/언론사 통계/);
+  assert.match(f.replies.at(-1).text,/아직 집계된 언론사가 없습니다/);
+  f.sql.prepare('INSERT INTO news_publisher_seen(url,domain,first_seen_ms,reason) VALUES(?,?,?,?)')
+    .run('https://news.example.com/x','news.example.com',now,'content_filter');
+  await command(f,'언론사');
+  assert.match(f.replies.at(-1).text,/news.example.com/);
+  assert.match(f.replies.at(-1).text,/수집 1/);
+  await command(f,'publishers','0');
+  assert.match(f.replies.at(-1).text,/사용법/);
+  await command(f,'publishers','2');
+  assert.match(f.replies.at(-1).text,/해당 페이지가 없습니다/);
+  const previous=f.replies.length;
+  await command(f,'publishers','1',222);
+  assert.equal(f.replies.length,previous);
 });
