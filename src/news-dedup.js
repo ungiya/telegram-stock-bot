@@ -29,8 +29,11 @@ function keywords(value) {
 }
 // Event-level comparison for all watchlist companies. Specific named entities,
 // model versions, and counterparties are more durable than outlet-specific wording.
-function eventAnchors(value) {
-  const normalized = String(value || '').normalize('NFKC').toLowerCase()
+function eventAnchors(value, ticker = '') {
+  // A company's own name is shared by every headline and is NOT evidence of the same event.
+  const withoutTicker = String(value || '').normalize('NFKC').toLowerCase()
+    .split(String(ticker || '').normalize('NFKC').toLowerCase()).join(' ');
+  const normalized = withoutTicker
     .replace(/루디\s*(0[.]2|2[.]0)/g, 'rudi02')
     .replace(/rudi\s*(0[.]2|2[.]0)/g, 'rudi02')
     .replace(/ls\s*(?:electric|일렉트릭)/g, 'ls일렉트릭')
@@ -53,7 +56,7 @@ function eventAction(value) {
   return '';
 }
 function matchingEvent(a, b) {
-  const aa = eventAnchors(a.title), bb = eventAnchors(b.title);
+  const aa = eventAnchors(a.title, a.ticker), bb = eventAnchors(b.title, b.ticker);
   const common = [...aa].filter(v => bb.has(v));
   const longer = common.filter(v => v.length >= 4 || /\d/.test(v));
   const actionA = eventAction(a.title), actionB = eventAction(b.title);
