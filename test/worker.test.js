@@ -138,3 +138,37 @@ test("PGS is dropped from pending queue; later actual trial results are not supp
     "파마리서치 PGS에서 임상 3상 결과 발표",
     description:"새로운 3상 결과를 공개했다."}),false);
 });
+
+
+test("New publisher blacklist blocks both incoming and queued news", async () => {
+  const now = Date.now();
+  const { queuedNewsExcluded } = await import("../src/worker.js");
+  const domains = [
+    ["뉴스퀘스트","newsquest.co.kr"],
+    ["메가경제","megaeconomy.co.kr"],
+    ["헬로티 헬로스톡","hellot.net"],
+    ["TTL뉴스","ttlnews.com"],
+    ["이코노미톡뉴스","economytalk.kr"]
+  ];
+  for (const [name, domain] of domains) {
+    const article = {
+      title: "에이피알 미국 신제품 출시",
+      description: "에이피알 해외 신제품 출시",
+      pubDate: new Date(now).toUTCString(),
+      originallink: "https://www."+domain+"/news/articleView.html?idxno=1200",
+      link: "https://n.news.naver.com/mnews/article/005/00000",
+    };
+    assert.equal(normalizeArticle(article,"에이피알",now),null,name+" origin");
+    assert.equal(normalizeArticle({...article,originallink:"",link:"https://m."+domain+"/news/123"},"에이피알",now),null,name+" Naver fallback");
+    assert.equal(blockedNewsSource("https://WWW."+domain.toUpperCase()+"./news"),true,name+" caps and dot");
+    assert.equal(blockedNewsSource("https://cdn."+domain+"/news"),true,name+" subdomain");
+    assert.equal(queuedNewsExcluded({ticker:"에이피알",title:article.title,description:article.description,url:article.originallink,pub_ms:now}),true,name+" queued");
+    assert.equal(blockedNewsSource("https://"+domain+".example.org/news"),false,name+" spoof");
+    assert.equal(blockedNewsSource("https://example.org/path/"+domain),false,name+" path");
+  }
+  assert.equal(blockedNewsSource("https://www.hellot.ne/news"),false,"mistyped HelloT URL does not refer to an actual site");
+  assert.ok(normalizeArticle({
+    title:"에이피알 미국 신제품 출시",pubDate:new Date(now).toUTCString(),
+    originallink:"https://safe-example.org/news/123",
+  },"에이피알",now));
+});
