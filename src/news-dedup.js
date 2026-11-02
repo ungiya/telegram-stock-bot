@@ -72,3 +72,25 @@ export function sameNews(a, b) {
     || (shared >= 2 && titleSimilarity >= 0.55 && summarySimilarity >= 0.6)
     || (shared >= 1 && titleSimilarity >= 0.3 && Math.min(ad.length,bd.length) >= 40 && summarySimilarity >= 0.9);
 }
+
+// The user confirmed repeated delivery of this specific 2026-10-30 GSPA.
+// Suppress its syndicated coverage even when the original has aged out of
+// history or a publisher supplies a completely different/empty excerpt.
+// Date bounds and follow-up exclusions prevent a permanent Siemens blacklist.
+export function coveredNewsEvent(item) {
+  if (item.ticker !== '효성중공업') return null;
+  const published = Number(item.pub_ms);
+  if (!Number.isFinite(published) || published < Date.parse('2026-10-29T00:00:00+09:00')
+    || published >= Date.parse('2026-11-14T00:00:00+09:00')) return null;
+  const title = String(item.title || '').normalize('NFKC').toLowerCase();
+  const body = title + ' ' + String(item.description || '').normalize('NFKC').toLowerCase();
+  if (!/지멘스|siemens/.test(body)) return null;
+  // Concrete follow-ups must not be swallowed by the old agreement coverage.
+  if (/해지|철회|취소|중단|결렬|부인|사실무근|정정|소송|실적|영업이익|순이익|수주|공급\s*계약|납품|추가\s*(협약|계약)|신규\s*계약|재계약/.test(title)) return null;
+  if (/해지|철회|취소|결렬|소송|사실무근/.test(body)) return null;
+  if (/\d[\d,.]*\s*(?:조|억|만)\s*원/.test(title)) return null;
+  const partnership = /협력|협약|파트너십|맞손|손잡|gspa|제휴|동맹/.test(body)
+    || /(?:지멘스|siemens)\s*(?:와|과)/.test(title);
+  const scope = /디지털\s*전력|전력망|데이터\s*센터|gspa/.test(body);
+  return partnership && scope ? 'event:hyosung-siemens-gspa-2026-10-30' : null;
+}

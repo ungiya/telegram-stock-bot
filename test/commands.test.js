@@ -204,19 +204,20 @@ test('cross-outlet duplicates are suppressed within a batch and across later cro
   const insert = f.sql.prepare('INSERT INTO articles (url,ticker,title,description,pub_ms,discovered_ms) VALUES (?,?,?,?,?,?)');
   const title = '효성중공업 지멘스와 디지털 전력망 기술 협력';
   const description = '효성중공업이 독일 지멘스와 디지털 전력망과 인공지능 데이터센터 솔루션 분야에서 협력한다. 글로벌 전략적 파트너십 협약을 체결했다.';
-  const now = Date.now();
+  const now = Date.parse('2026-12-01T00:00:00Z');
+  t.mock.timers.enable({apis:['Date'],now});
   insert.run('https://first.example/news', '효성중공업', title, description, now - 1000, now);
   insert.run('https://second.example/news', '효성중공업', title + '!', description, now, now);
-  assert.equal((await runNewsCheck(f.env)).sent, 1);
+  assert.equal((await runNewsCheck(f.env, now)).sent, 1);
   assert.equal(f.replies.length, 1);
   assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url = ?').get('https://second.example/news').duplicate_of, 'https://first.example/news');
   // A later outlet must compare with persisted history, including after a restart.
   insert.run('https://third.example/news', '효성중공업', '[속보] ' + title, description, now + 1, now);
-  assert.equal((await runNewsCheck({ ...f.env })).sent, 0);
+  assert.equal((await runNewsCheck({ ...f.env }, now)).sent, 0);
   assert.equal(f.replies.length, 1);
   // Distinct news about the same company still sends.
   insert.run('https://fourth.example/news', '효성중공업', '효성중공업 미국 공장 증설에 3000억원 투자', '미국 변압기 생산능력 확대를 위한 신규 공장 투자 계획을 발표했다.', now + 2, now);
-  assert.equal((await runNewsCheck(f.env)).sent, 1);
+  assert.equal((await runNewsCheck(f.env, now)).sent, 1);
   assert.equal(f.replies.length, 2);
 });
 
@@ -225,7 +226,7 @@ test('old dedup history expires and a failed delivery cannot suppress its retry'
   const now = Date.now();
   const insert = f.sql.prepare('INSERT INTO articles (url,ticker,title,description,pub_ms,discovered_ms,sent_ms) VALUES (?,?,?,?,?,?,?)');
   const title = '달바글로벌 미국 신규 매장 개장';
-  insert.run('https://example.com/old', '달바글로벌', title, '', now - 73 * 3600000, now - 73 * 3600000, now - 73 * 3600000);
+  insert.run('https://example.com/old', '달바글로벌', title, '', now - 8 * 24 * 3600000, now - 8 * 24 * 3600000, now - 8 * 24 * 3600000);
   insert.run('https://example.com/new', '달바글로벌', title, '', now, now, null);
   f.failSend(1);
   await assert.rejects(runNewsCheck(f.env), /temporary failure/);
@@ -267,14 +268,36 @@ test('minute cron keeps polling commands while skipping news before its due time
 });
 
 test('paraphrased syndication is suppressed across runs while a cancellation is delivered', async t => {
-  const f=fixture(t), now=Date.now();
+  const f=fixture(t), now=Date.parse('2026-12-01T00:00:00Z');
+  t.mock.timers.enable({apis:['Date'],now});
   const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
   const description='효성중공업이 독일 지멘스와 디지털 전력망과 인공지능 데이터센터 솔루션 분야에서 협력한다. 글로벌 전략적 파트너십 협약을 체결했다.';
   insert.run('https://original.example/news','효성중공업','효성중공업 지멘스와 전략적 파트너십',description,now-1000,now);
-  assert.equal((await runNewsCheck(f.env)).sent,1);
+  assert.equal((await runNewsCheck(f.env, now)).sent,1);
   insert.run('https://copy.example/news','효성중공업','효성중공업 지멘스와 맞손, 디지털 전력망 확대',description,now,now);
-  assert.equal((await runNewsCheck({...f.env})).sent,0);
+  assert.equal((await runNewsCheck({...f.env}, now)).sent,0);
   assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://copy.example/news').duplicate_of,'https://original.example/news');
   insert.run('https://update.example/news','효성중공업','효성중공업 지멘스와 전략적 파트너십 해지',description,now+1,now);
-  assert.equal((await runNewsCheck(f.env)).sent,1);
+  assert.equal((await runNewsCheck(f.env, now)).sent,1);
+});
+
+test('known Siemens syndication is suppressed even with no history or description; unrelated news sends', async t => {
+  const f=fixture(t),now=Date.parse('2026-11-02T01:00Z');
+  t.mock.timers.enable({apis:['Date'],now});
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  insert.run('https://late.example/gspa','효성중공업','효성중공업 지멘스와 AI 데이터센터 공략 맞손','',now,now);
+  assert.equal((await runNewsCheck(f.env,now)).sent,0);
+  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/gspa').duplicate_of,'event:hyosung-siemens-gspa-2026-10-30');
+  insert.run('https://new.example/contract','효성중공업','효성중공업 지멘스와 디지털 전력망 신규 공급 계약','',now,now);
+  assert.equal((await runNewsCheck(f.env,now)).sent,1);
+});
+
+test('four-day old representative still suppresses a republished article', async t => {
+  const f=fixture(t), now=Date.now();
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms,sent_ms) VALUES(?,?,?,?,?,?,?)');
+  const title='달바글로벌 미국 신규 매장 개장';
+  insert.run('https://old.example/story','달바글로벌',title,'',now-4*86400000,now-4*86400000,now-4*86400000);
+  insert.run('https://late.example/story','달바글로벌',title,'',now,now,null);
+  assert.equal((await runNewsCheck(f.env)).sent,0);
+  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/story').duplicate_of,'https://old.example/story');
 });

@@ -1,7 +1,7 @@
 import { KIND_CRON, runKindCheck } from "./kind.js";
 import { claimNewsSearch } from "./news-schedule.js";
 import { DART_CRON, runDartCheck } from "./dart.js";
-import { sameNews } from "./news-dedup.js";
+import { sameNews, coveredNewsEvent } from "./news-dedup.js";
 import { REPORT_CRON, runReportCheck } from "./reports.js";
 import { liveWatchlist, pollCommands, withBotLock } from "./commands.js";
 import { newsAllowed } from "./filters.js";
@@ -170,9 +170,10 @@ async function sendPending(env, now, companies) {
       "SELECT url, ticker, title, description FROM articles " +
       "WHERE sent_ms IS NOT NULL AND duplicate_of IS NULL AND pub_ms >= ? " +
       "AND ticker IN (" + activePlaceholders + ") ORDER BY pub_ms DESC LIMIT 2000"
-    ).bind(now - 72 * 60 * 60 * 1000, ...active).all()).results || [];
+    ).bind(now - 7 * 24 * 60 * 60 * 1000, ...active).all()).results || [];
     for (const item of claimed) {
-      const duplicate = history.find(previous => sameNews(item, previous));
+      const covered = coveredNewsEvent(item);
+      const duplicate = covered ? { url: covered } : history.find(previous => sameNews(item, previous));
       if (duplicate) {
         await env.DB.prepare(
           "UPDATE articles SET sent_ms = ?, duplicate_of = ?, lease_until_ms = NULL WHERE url = ?"

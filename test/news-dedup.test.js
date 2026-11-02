@@ -47,3 +47,13 @@ test('generic company boilerplate cannot merge stories about different counterpa
   const description='효성중공업은 글로벌 전력기기 시장에서 사업을 확대하고 있다. 올해 해외 시장 수요 증가에 대응하며 성장을 이어가고 있다.';
   assert.equal(sameNews({ticker:'효성중공업',title:'효성중공업 지멘스 전력망 공급계약',description},{ticker:'효성중공업',title:'효성중공업 한전 변압기 공급계약',description}),false);
 });
+
+test('the already delivered Siemens GSPA is covered regardless of excerpt, with bounded follow-up protection', async () => {
+  const {coveredNewsEvent} = await import('../src/news-dedup.js');
+  const base={ticker:'효성중공업',pub_ms:Date.parse('2026-11-02T00:00Z'),description:''};
+  for (const title of ['효성중공업, 지멘스와 디지털 전력망 기술 협력','효성중공업 지멘스와 AI 데이터센터 공략 맞손','효성중공업 Siemens GSPA 체결','효성중공업, 지멘스와 디지털 전력망·AI 데이터센터 시장 공략'])
+    assert.equal(coveredNewsEvent({...base,title}),'event:hyosung-siemens-gspa-2026-10-30');
+  for (const title of ['효성중공업 지멘스와 전력망 협약 해지','효성중공업 지멘스와 디지털 전력망 신규 공급 계약','효성중공업 지멘스 협력 이후 영업이익 증가','효성중공업 한전과 전력망 협약'])
+    assert.equal(coveredNewsEvent({...base,title}),null);
+  assert.equal(coveredNewsEvent({...base,...siemens,pub_ms:Date.parse('2027-01-01T00:00Z')}),null);
+});
