@@ -4,7 +4,7 @@ import { DART_CRON, runDartCheck } from "./dart.js";
 import { sameNews, coveredNewsEvent } from "./news-dedup.js";
 import { REPORT_CRON, runReportCheck } from "./reports.js";
 import { liveWatchlist, pollCommands, withBotLock } from "./commands.js";
-import { newsAllowed, companyNewsAllowed } from "./filters.js";
+import { newsAllowed, companyNewsAllowed, analystNewsExcluded } from "./filters.js";
 import { ALIASES } from "./watchlist.js";
 
 const NAVER_NEWS_API = "https://naverapihub.apigw.ntruss.com/search/v1/news";
@@ -137,6 +137,14 @@ async function pollTopic(env, ticker, aliases, now, paused) {
   if (writes.length) await env.DB.batch(writes);
 }
 
+// Re-evaluate already-queued articles against the latest filtering rules.
+// A newly excluded article is marked handled rather than sent on the next tick.
+export function queuedNewsExcluded(item) {
+  return blockedNewsSource(item.url) ||
+    !companyNewsAllowed(item.ticker, item.title, item.description) ||
+    analystNewsExcluded(item.title, item.description);
+}
+
 async function sendPending(env, now, companies) {
   if (!companies.size) return 0;
   const active = [...companies.keys()];
@@ -151,7 +159,7 @@ async function sendPending(env, now, companies) {
     "RETURNING url, ticker, title, description, pub_ms"
   ).bind(now + 120_000, now, ...active, MAX_PER_ALERT).all();
 
-  const excluded = item => blockedNewsSource(item.url) || !companyNewsAllowed(item.ticker, item.title, item.description);
+  const excluded = queuedNewsExcluded;
   const blocked = (rows.results || []).filter(excluded);
   if (blocked.length) {
     await env.DB.batch(blocked.map(item => env.DB.prepare(
