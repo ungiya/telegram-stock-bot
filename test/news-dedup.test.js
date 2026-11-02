@@ -130,3 +130,30 @@ test('reported Kiff launch repeated press release is suppressed across outlets a
  assert.equal(coveredNewsEvent({...base,ticker:'에이피알',title:headlines[0]}),null);
  assert.equal(coveredNewsEvent({...base,pub_ms:Date.parse('2026-12-01T00:00Z'),title:headlines[0]}),null);
 });
+
+
+test('generic same-event dedup groups independent publishers covering one named product launch',()=>{
+  const when=Date.parse('2026-11-02T12:00:00Z');
+  const a={ticker:'서진시스템',url:'https://first.example/p/1',
+    title:"서진시스템, ESS 전용 'VoltGrid' 신제품 선봬",
+    description:'서진시스템이 ESS 장비용 신제품 VoltGrid를 선보이며 새 시장 공략에 나선다.',
+    pub_ms:when};
+  const b={ticker:'서진시스템',url:'https://other.example/2',
+    title:"서진시스템 ESS 솔루션 VoltGrid 서비스 개시",
+    description:'배터리 시스템 제조사 신제품 출시 관련 보도자료',
+    pub_ms:when+3600000};
+  assert.equal(sameNews(a,b),true,'launch of one named product is one event regardless of outlet');
+  assert.equal(sameNews({...a,ticker:'에이피알'},b),false,'different companies are not mixed');
+  assert.equal(sameNews(a,{...b,pub_ms:when+12*86400000}),false,'later launch is a separate event');
+  assert.equal(sameNews(a,{...b,title:'서진시스템 VoltGrid 신규 해외 국가 출시'}),false,'distinct rollout is sent');
+  assert.equal(sameNews(a,{...b,title:'서진시스템 VoltGrid 공급 계약 체결'}),false,'distinct contract is sent');
+  assert.equal(sameNews(a,{...b,title:'서진시스템 NewGrid 서비스 개시'}),false,'different product is not merged');
+});
+
+test('same Kiff event from multiple sources is suppressed; later material Kiff news remains',()=>{
+  const when=Date.parse('2026-11-02T12:00:00Z');
+  const a={ticker:'크래프톤',title:"크래프톤, AI 캐릭터 챗 'Kiff' 서비스 개시…K팝 인공지능 사업 확장",description:'K팝 AI 캐릭터 채팅 플랫폼 국내 공식 상용화',pub_ms:when};
+  const b={ticker:'크래프톤',title:"크래프톤, K팝 AI 캐릭터 챗 서비스 'Kiff' 선보여",description:'아티스트 페르소나 기반 서비스 출시',pub_ms:when+1800000};
+  assert.equal(sameNews(a,b),true);
+  assert.equal(sameNews(a,{...b,title:'크래프톤 Kiff 신규 해외 국가 출시'}),false);
+});
