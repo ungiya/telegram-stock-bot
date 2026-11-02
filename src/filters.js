@@ -22,11 +22,31 @@ export function companyNewsAllowed(ticker, title, description = '') {
   return corporateTitle.test(title) && !consumerHeadline.test(title);
 }
 
+// Exclude securities-firm price targets, rating changes and analyst commentary
+// from NEWS alerts only. Independently scheduled broker reports are unaffected.
+const analystTargetPrice = /목표\s*(?:주가|가(?:격)?|價)|적정\s*주가|\btarget\s*price\b/i;
+const analystRating = /투자\s*(?:의견|등급)|(?:매수|매도|중립|비중\s*(?:확대|축소))\s*(?:의견|추천|유지|제시|상향|하향|전환)/i;
+const analystSource = /증권사|증권가|애널리스트|리서치|증권\s*리포트|[가-힣a-z]{2,16}\s*증권(?=\s|[,·:'"“”]|$|[이가은는의에서도과와]|으로)/i;
+const analystCommentary = /전망|추정|평가|분석|추천|매수|매도|중립|비중\s*(?:확대|축소)|상승\s*여력|하락\s*여력|밸류에이션|투자\s*매력|눈높이|어닝\s*서프라이즈\s*기대/i;
+const opinionHeadline = /전망|기대|추천|분석|평가|눈높이|주가|매수|매도|투자\s*매력|상승\s*여력|하락\s*여력|증권가|증권사|리포트/i;
+
+export function analystNewsExcluded(title, description = '') {
+  const headline = String(title || '');
+  if (analystTargetPrice.test(headline) || analystRating.test(headline)) return true;
+  if (analystSource.test(headline) && analystCommentary.test(headline)) return true;
+  // A corporate event may mention a price target in background copy; only
+  // exclude excerpt-sourced analyst coverage when the headline is an opinion.
+  const excerpt = String(description || '');
+  return opinionHeadline.test(headline) && analystSource.test(excerpt) &&
+    (analystTargetPrice.test(excerpt) || analystRating.test(excerpt));
+}
+
 export const norm = value => String(value).toLowerCase().replace(/[^\p{L}\p{N}_]/gu, "");
 export function newsAllowed(ticker, aliases, title, description = "") {
   const text = title + " " + description;
   if (!aliases.some(alias => norm(title).includes(norm(alias)))) return false;
   if (automatic.test(text)) return false;
+  if (analystNewsExcluded(title, description)) return false;
   if (!companyNewsAllowed(ticker, title, description)) return false;
   if (promotion.test(title) && !material.test(title)) return false;
   if (market.test(title) && !material.test(text)) return false;
