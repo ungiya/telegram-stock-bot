@@ -215,3 +215,17 @@ test('public health response exposes deployed news filter version without secret
   assert.equal(json.purpose,'stock-news-alert');
   assert.equal(await (await worker.fetch(new Request('https://telegram-stock-news-alert.example.workers.dev/secret'))).text(),'Not found');
 });
+
+
+
+test('Wadiz project trends are refused both on ingestion and from the old send queue',async()=>{
+  const { queuedNewsExcluded }=await import('../src/worker.js');
+  const now=Date.parse('2026-11-03T13:42:00+09:00');
+  const title='[와디즈] 와디즈, 겨울 난방 가전 펀딩 참여 50% 증가…공간·전력 효율 높은 제품';
+  const description='와디즈는 올해 9~10월 난방 가전 펀딩 프로젝트 서포터 참여가 전년 대비 약 50% 늘었다고 밝혔다.';
+  const url='https://www.venturesquare.net/1125200/';
+  const article={title,description,originallink:url,link:'https://n.news.naver.com/mnews/article/101/1',pubDate:new Date(now).toUTCString()};
+  assert.equal(normalizeArticle(article,'와디즈',now),null);
+  assert.equal(queuedNewsExcluded({ticker:'와디즈',title,description,url,pub_ms:now}),true);
+  assert.equal(queuedNewsExcluded({ticker:'와디즈',title:'와디즈 IPO 예비심사 청구',description:'',url:'https://example.com/wadiz-ipo',pub_ms:now}),false);
+});
