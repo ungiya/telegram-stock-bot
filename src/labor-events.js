@@ -30,6 +30,26 @@ function announcedFutureStrike(item, headline) {
   return days!==null && days>0 && days<=35;
 }
 
+
+// On 3 Nov, the first Hyosung office-worker strike was still scheduled for
+// the following day. Some outlets wrote "출범 첫 파업" without "예고/예정",
+// so a headline-only classifier otherwise misses the same already-sent notice.
+// Bound this exception to the announcement day. Actual Nov 4 strike news stays new.
+function firstHyosungStrikeNoticeOnNov3(item, headline, body) {
+  if (item.ticker !== '효성중공업') return false;
+  const published=stamp(item);
+  if(!Number.isFinite(published) ||
+     published<Date.parse('2026-11-03T00:00:00+09:00') ||
+     published>=Date.parse('2026-11-04T00:00:00+09:00')) return false;
+  if(!/파업/.test(headline) ||
+     !/(노조|노동조합|사무\s*(?:직|기술직))/.test(body) ||
+     !/(첫|출범|내일부터|4일부터|파업\s*(?:예고|계획|예정)|사측)/.test(body)) return false;
+  if(/재파업|2\s*차\s*파업|두\s*번째\s*파업|추가\s*파업|다시\s*파업/.test(headline))return false;
+  if(/실제\s*파업|파업\s*(?:시작했|돌입했|진행\s*중|첫날)|파업에\s*돌입했|파업을\s*시작했/.test(headline))
+    return false;
+  return true;
+}
+
 export function laborStage(item) {
   const headline=normalize(item.title);
   const body=headline+' '+normalize(item.description);
@@ -41,6 +61,7 @@ export function laborStage(item) {
   if(/파업\s*(?:철회|취소|중단|종료)|쟁의\s*(?:철회|중단)/.test(headline))return 'withdrawn';
   if(/임금\s*(?:협상|교섭).{0,14}(?:타결|합의)|(?:임단협|노사).{0,14}(?:타결|합의)|잠정\s*합의|협상\s*타결/.test(headline))return 'settled';
   if (announcedFutureStrike(item,headline)) return 'announced';
+  if (firstHyosungStrikeNoticeOnNov3(item, headline, body)) return 'announced';
   if(/(?:실제|본격|첫|부분|전면|총)?\s*파업.{0,12}(?:돌입|시작|진행|강행|실시|벌였|벌여|첫날)|(?:돌입|시작).{0,10}파업/.test(headline)
      && !/예고|예정|계획|가능성|경고|시사|초읽기|앞두/.test(headline))return 'started';
   // Multi-outlet headlines often say "첫 파업" or "법과 원칙 대응"
@@ -81,6 +102,7 @@ export function reportedHyosungStrikeNotice(item) {
     const url=new URL(item.url);
     const host=url.hostname.toLowerCase().replace(/^www\./,'');
     if(host==='yna.co.kr'&&url.pathname==='/view/AKR20261103052951003')return true;
+    if(host==='breaknews.com'&&url.pathname.replace(/\/$/,'')==='/1247882')return true;
     if(host==='mdtoday.co.kr'&&url.pathname==='/news/articleView.html'&&
       url.searchParams.get('idxno')==='622617')return true;
     if(host==='businesspost.co.kr'&&url.pathname==='/BP'&&
