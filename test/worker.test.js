@@ -294,3 +294,34 @@ test('WeMakeNews and CatchNews blocked site-wide in new search and pending queue
     assert.equal(blockedNewsSource('https://safe.example/path/'+domain+'/article'),false,'path text');
   }
 });
+
+
+test('The Public publisher is blocked on ingestion and existing send queue across all watchlist companies',async()=>{
+  const {queuedNewsExcluded}=await import('../src/worker.js');
+  const now=Date.parse('2026-11-03T16:21:00+09:00');
+  for(const url of [
+    'https://www.thepublic.kr/news/articleView.html?idxno=319240',
+    'http://thepublic.kr/news/articleView.html?idxno=319240',
+    'https://m.thepublic.kr/news/12345',
+    'https://WWW.THEPUBLIC.KR./news/articleView.html?idxno=222'
+  ]){
+    assert.equal(blockedNewsSource(url),true,url);
+    for(const ticker of ['효성중공업','크래프톤','에이피알']){
+      const title=ticker+' 신규 공급 계약 체결';
+      assert.equal(normalizeArticle({
+        title,description:'신규 계약 기사',originallink:url,
+        link:'https://n.news.naver.com/mnews/article/123/456',
+        pubDate:new Date(now).toUTCString()
+      },ticker,now),null,ticker+' ingestion');
+      assert.equal(queuedNewsExcluded({
+        ticker,title,description:'신규 계약 기사',url,pub_ms:now
+      }),true,ticker+' queued');
+    }
+  }
+  for(const url of [
+    'https://not-thepublic.kr/article',
+    'https://thepublic.kr.example.com/article',
+    'https://other.example.com/path/thepublic.kr/article',
+    'https://www.thepublic.co.kr'
+  ])assert.equal(blockedNewsSource(url),false,url);
+});
