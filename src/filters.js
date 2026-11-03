@@ -32,9 +32,9 @@ export function wadizCompanyNewsAllowed(title) {
   if (!wadizCorporateSubject.test(headline) || wadizMakerLead.test(headline)) return false;
   const finance = wadizFinancial.test(headline);
   if (!(finance || wadizCapital.test(headline) || wadizGovernance.test(headline) || wadizContract.test(headline))) return false;
-  // Funding projects about third-party makers may quote 'IPO' or investment.
-  // Actual company earnings can still survive a broader industry headline.
-  if (wadizCampaign.test(headline) && !finance) return false;
+  // A maker's product/project story can mention IPO and company results in
+  // passing. Such consumer-news headlines are always excluded here.
+  if (wadizCampaign.test(headline)) return false;
   return true;
 }
 
