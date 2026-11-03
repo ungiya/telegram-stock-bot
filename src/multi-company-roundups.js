@@ -37,6 +37,9 @@ function multiCompanyList(afterHeader) {
   // a standalone story may mention other companies in background copy.
   const lead=String(afterHeader||'').split(/[.!?…。]/,1)[0].slice(0,160);
   const parts=lead.split(splitBulletin).map(x=>x.trim()).filter(Boolean);
+  // A comma after one company often introduces an ordinary sentence.
+  // Unknown-company lists require middle dots or at least three entries.
+  if(!/[·ㆍ]/.test(lead) && parts.length<3) return false;
   const organization=part => part.length>=2 && part.length<=23 &&
     !/^(?:에서|부터|때문|위해|관련|현장)/.test(part) &&
     !/(?:공개|발표|신작|시연|출시|전망|협업|체결|실적|수주|상승|하락|제공|진출|개최|운영|확대|참가|프리뷰|프로그램|체험|공략|투자|계약|화제)/.test(part) &&
