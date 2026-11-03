@@ -48,7 +48,10 @@ export function reportedDndRdDay(item) {
  // roadmap topics confirmed in the user's screenshots, within this event window.
  const roadmap=/추진|협상|향후|계획|확장|전략|도전|승부|공략|내년|연내/;
  if(!roadmap.test(title))return false;
- return (/이슬기/.test(title)&&/향후\s*10\s*년/.test(title)&&/임상/.test(title)) ||
+ const dnd01Transfer=/dd\s*01/.test(body) && /간질환|지방간|mash/.test(body) &&
+   /기술\s*이전/.test(body) && /연내/.test(body) &&
+   /글로벌\s*제약|빅\s*파마|빅파마/.test(body) && /3\s*상/.test(body);
+ return dnd01Transfer || (/이슬기/.test(title)&&/향후\s*10\s*년/.test(title)&&/임상/.test(title)) ||
    (/dd\s*18/.test(body)&&/근육|비만/.test(title)&&/내년|lo\s*추진/.test(title)) ||
    (/dd\s*01/.test(body)&&/기술\s*이전|기술\s*수출/.test(title)&&/jp\s*모건|빅파마/.test(body)) ||
    (/지방간/.test(title)&&/간경변/.test(title)&&/확장/.test(title)) ||
