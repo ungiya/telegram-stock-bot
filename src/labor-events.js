@@ -45,7 +45,7 @@ function firstHyosungStrikeNoticeOnNov3(item, headline, body) {
      !/(노조|노동조합|사무\s*(?:직|기술직))/.test(body) ||
      !/(첫|출범|내일부터|4일부터|파업\s*(?:예고|계획|예정)|사측)/.test(body)) return false;
   if(/재파업|2\s*차\s*파업|두\s*번째\s*파업|추가\s*파업|다시\s*파업/.test(headline))return false;
-  if(/실제\s*파업|파업\s*(?:시작했|돌입했|진행\s*중|첫날)|파업에\s*돌입했|파업을\s*시작했/.test(headline))
+  if(/실제\s*파업|파업.{0,12}(?:돌입|시작|강행|진행)|(?:돌입|시작).{0,10}파업|파업\s*첫날/.test(headline))
     return false;
   return true;
 }
