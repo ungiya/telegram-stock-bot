@@ -255,3 +255,12 @@ test('JobPost articles are excluded from Naver ingestion and previously queued d
   assert.equal(blockedNewsSource('https://job-post.co.kr.example.com/news'),false);
   assert.equal(blockedNewsSource('https://other.example.com/job-post.co.kr/news'),false);
 });
+test('CatchNews originals, mobile URLs and pending articles are blocked', async()=>{
+ const {queuedNewsExcluded}=await import('../src/worker.js');
+ for(const url of ['https://www.catchnews.kr/news/articleView.html?idxno=1','https://m.catchnews.kr/a']){
+  assert.equal(blockedNewsSource(url),true);
+  assert.equal(normalizeArticle({title:'크래프톤 신규 서비스 출시',originallink:url,link:'https://n.news.naver.com/article/1/2',pubDate:new Date().toUTCString()},'크래프톤',Date.now()),null);
+  assert.equal(queuedNewsExcluded({ticker:'크래프톤',title:'신규 서비스 출시',url}),true);
+ }
+ assert.equal(blockedNewsSource('https://notcatchnews.kr/a'),false);
+});

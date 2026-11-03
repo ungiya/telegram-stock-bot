@@ -1,3 +1,4 @@
+import { buybackSummary } from './dart-buyback.js';
 // Extract verified source fields, without guessing numbers or generating advice.
 export const SUMMARY_MARKER = '[핵심 항목]';
 const definitions = [
@@ -25,6 +26,8 @@ const labelType = s => definitions.find(([,pattern])=>pattern.test(cleanLabel(s)
 const shorten = (s,n) => s.length>n?s.slice(0,n-1)+'…':s;
 export function summarizeFiling(report, body){
  if(!body?.trim())return '본문을 불러오지 못했습니다. 원문 링크에서 확인해 주세요.';
+ const buyback=buybackSummary(report,body);
+ if(buyback)return buyback;
  const lines=body.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
  const fields=[];
  for(let i=0;i<lines.length;i++){

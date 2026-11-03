@@ -63,7 +63,7 @@ async function get(url,signal){
 }
 export function viewerUrl(html,receipt){
   // Use only a literal viewer call for this receipt, never evaluate JavaScript.
-  for(const m of html.matchAll(/viewDoc\s*\(\s*["'](\d{14})["']\s*,\s*["'](\d+)["']\s*,\s*["'](\d+)["']\s*,\s*["'](\d+)["']\s*,\s*["'](\d+)["']\s*,\s*["']([a-zA-Z0-9]+)["']/g)){
+  for(const m of html.matchAll(/viewDoc\s*\(\s*["'](\d{14})["']\s*,\s*["'](\d+)["']\s*,\s*["'](\d+)["']\s*,\s*["'](\d+)["']\s*,\s*["'](\d+)["']\s*,\s*["']([a-zA-Z0-9.]+)["']/g)){
     if(m[1]!==receipt)continue;
     return new URL('https://dart.fss.or.kr/report/viewer.do?'+new URLSearchParams({rcpNo:m[1],dcmNo:m[2],eleId:m[3],offset:m[4],length:m[5],dtd:m[6]}));
   }
