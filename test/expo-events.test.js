@@ -95,7 +95,11 @@ test('new contracts, actual releases, an independently unveiled named game, 2027
   for(const item of newStories){
     assert.equal(reportedKraftonGstarBriefing(item),false,item.title);
     assert.equal(coveredNewsEvent(item),null,item.title);
-    assert.equal(sameNews(examples[0],item),false,item.title);
+    // A verbatim republish of the original briefing stays a duplicate,
+    // even if the narrow known-event date window has expired.
+    if (item.url !== 'https://new.example/2027-reprint')
+      assert.equal(sameNews(examples[0],item),false,item.title);
   }
+  assert.equal(sameNews(examples[0],newStories[7]),true,'identical old story republished remains a duplicate');
   assert.equal(coveredNewsEvent({...examples[0],ticker:'넷마블',url:'https://not-reported.example'}),null);
 });
