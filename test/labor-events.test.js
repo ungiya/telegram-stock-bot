@@ -137,3 +137,37 @@ test('reported Yonhap Nov 3 strike warning is suppressed, regardless of its exce
     pub_ms:Date.parse('2026-11-04T12:00:00+09:00')};
   assert.equal(coveredNewsEvent(nextPhase),null);
 });
+
+
+test('BreakNews first-strike headline without "예고" is the Nov 3 notice, not a new walkout', () => {
+  const pub_ms=Date.parse('2026-11-03T12:58:00+09:00');
+  const article={
+    ticker:'효성중공업',
+    title:'효성중공업 사무직 노조, 출범 첫 파업..사측 "깊은 유감"',
+    description:'효성중공업 사무직노동조합이 출범 이후 처음으로 파업에 들어간다. 노조는 사상 최대 실적에 걸맞은 보상과 노조 활동 보장을 요구했다.',
+    url:'http://www.breaknews.com/1247882',
+    pub_ms
+  };
+  const notice='event:hyosung-wage-union-first-strike-warning-2026-11-03';
+  assert.equal(laborStage(article),'announced');
+  assert.equal(coveredNewsEvent(article),notice);
+  assert.equal(queuedNewsExcluded(article),true);
+  assert.equal(coveredNewsEvent({...article,url:'https://another.example/reworded'}),notice);
+  assert.equal(coveredNewsEvent({...article,description:'',url:'https://another.example/no-excerpt'}),notice);
+  assert.equal(coveredNewsEvent({...article,title:'무관한 제목',description:'',pub_ms:undefined}),notice,
+    'the user-reported original article URL is permanently recognized');
+  const incoming={
+    title:article.title,
+    description:article.description,
+    originallink:article.url,
+    link:'https://n.news.naver.com/mnews/article/999/1247882',
+    pubDate:new Date(pub_ms).toUTCString()
+  };
+  assert.equal(normalizeArticle(incoming,'효성중공업',pub_ms+60*60*1000),null);
+  const actual={...article,url:'https://another.example/nov4-start',
+    pub_ms:Date.parse('2026-11-04T09:00:00+09:00'),
+    title:'효성중공업 사무직 노조, 실제 첫 파업 돌입'};
+  assert.equal(laborStage(actual),'started');
+  assert.equal(coveredNewsEvent(actual),null);
+  assert.equal(sameNews(article,actual),false);
+});
