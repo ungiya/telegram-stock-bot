@@ -1,3 +1,4 @@
+import { isMultiCompanyRoundup } from './multi-company-roundups.js';
 // Ported from the existing Termux news filters.
 const automatic = new RegExp("AI\\s*기자|인공지능\\s*기자|로봇\\s*기자|자동\\s*(생성|작성)|AI.{0,6}(작성한|생성한|작성된|생성된)\\s*기사|기업\\s*PR|보도자료를?\\s*(그대로|기반)|유료\\s*광고|협찬\\s*기사|본\\s*기사는?\\s*광고", "i");
 const promotion = new RegExp("할인|쿠폰|기획전|타임딜|특가|쇼핑\\s*혜택|증정|사은품|구매\\s*혜택|프로모션|체험단|경품|선착순|팝업스토어|팝업\\s*스토어", "i");
@@ -112,6 +113,10 @@ export function priceNewsExcluded(title) {
 
 export const norm = value => String(value).toLowerCase().replace(/[^\p{L}\p{N}_]/gu, "");
 export function newsAllowed(ticker, aliases, title, description = "") {
+  // Publisher news roundups containing several companies are never one
+  // company-specific alert. This holds even if the description quotes a
+  // material development at the selected ticker.
+  if (isMultiCompanyRoundup(title)) return false;
   const text = title + " " + description;
   if (!aliases.some(alias => norm(title).includes(norm(alias)))) return false;
   if (automatic.test(text)) return false;
