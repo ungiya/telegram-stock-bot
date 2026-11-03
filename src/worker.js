@@ -53,7 +53,7 @@ export function canonicalUrl(value) {
 export function blockedNewsSource(value) {
   try {
     const host = new URL(value).hostname.toLowerCase().replace(/\.$/, "");
-    return ["vegannews.co.kr", "insight.co.kr", "pinpointnews.co.kr", "metroseoul.co.kr", "emetro.co.kr", "4th.kr", "newsquest.co.kr", "megaeconomy.co.kr", "hellot.net", "ttlnews.com", "economytalk.kr", "job-post.co.kr", "catchnews.kr"].some(domain => host === domain || host.endsWith("." + domain));
+    return ["vegannews.co.kr", "insight.co.kr", "pinpointnews.co.kr", "metroseoul.co.kr", "emetro.co.kr", "4th.kr", "newsquest.co.kr", "megaeconomy.co.kr", "hellot.net", "ttlnews.com", "economytalk.kr", "job-post.co.kr", "wemakenews.co.kr", "catchnews.kr", "catchnews.kr"].some(domain => host === domain || host.endsWith("." + domain));
   } catch { return false; }
 }
 
