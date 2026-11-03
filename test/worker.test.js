@@ -229,3 +229,29 @@ test('Wadiz project trends are refused both on ingestion and from the old send q
   assert.equal(queuedNewsExcluded({ticker:'와디즈',title,description,url,pub_ms:now}),true);
   assert.equal(queuedNewsExcluded({ticker:'와디즈',title:'와디즈 IPO 예비심사 청구',description:'',url:'https://example.com/wadiz-ipo',pub_ms:now}),false);
 });
+
+
+
+test('JobPost articles are excluded from Naver ingestion and previously queued delivery for all tickers', async () => {
+  const { queuedNewsExcluded } = await import('../src/worker.js');
+  const now=Date.parse('2026-11-03T16:21:00+09:00');
+  const urls=[
+    'https://www.job-post.co.kr/news/articleView.html?idxno=12345',
+    'http://job-post.co.kr/news/articleView.html?idxno=12345',
+    'https://m.job-post.co.kr/news/articleView.html?idxno=12345',
+    'https://JOB-POST.CO.KR./news/articleView.html?idxno=12345'
+  ];
+  for(const url of urls) {
+    assert.equal(blockedNewsSource(url),true,url);
+    for(const ticker of ['크래프톤','에이피알','씨어스']) {
+      const title=ticker+' 신규 공급 계약 체결';
+      assert.equal(normalizeArticle({title,description:title,originallink:url,
+        link:'https://n.news.naver.com/mnews/article/123/456',
+        pubDate:new Date(now).toUTCString()},ticker,now),null,ticker+' '+url);
+      assert.equal(queuedNewsExcluded({ticker,title,description:title,url,pub_ms:now}),true,ticker+' '+url);
+    }
+  }
+  assert.equal(blockedNewsSource('https://notjob-post.co.kr/news'),false);
+  assert.equal(blockedNewsSource('https://job-post.co.kr.example.com/news'),false);
+  assert.equal(blockedNewsSource('https://other.example.com/job-post.co.kr/news'),false);
+});
