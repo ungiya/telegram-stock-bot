@@ -543,3 +543,42 @@ test('user-reported Seers/iKoob LabConnect repeated coverage sends zero duplicat
   assert.equal(rows[2].duplicate_of,null);
   assert.ok(rows.every(x=>x.sent_ms!==null));
 });
+
+
+
+test('six repackaged Krafton G-STAR 2026 announcements in D1 send zero alerts while new contract sends',async t=>{
+  const f=fixture(t),now=Date.parse('2026-11-03T14:45:00+09:00');
+  t.mock.timers.enable({apis:['Date'],now});
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  const articles=[
+    ['https://www.inews24.com/view/2022038','크래프톤, 지스타 2026 현장 프로그램 공개',
+      '11월 19일부터 22일까지 부산 벡스코에서 열리는 지스타 2026 운영 프로그램을 공개했다.'],
+    ['https://www.thedailypost.kr/news/articleView.html?idxno=116616','크래프톤, 지스타 2026서 신작 5종 시연 및 체험형 프로그램 마련',
+      '국제 게임 전시회 지스타 2026에서 신작 시연 및 아이브 협업 체험형 콘텐츠를 마련했다.'],
+    ['https://zdnet.co.kr/view/?no=20261103142021','크래프톤, 지스타 현장 프로그램 공개…펍지G·아이브 협업 공간 마련',
+      '크래프톤은 지스타 2026 주요 현장 프로그램을 3일 공개했다.'],
+    ['https://www.e-science.co.kr/news/articleView.html?idxno=138827','크래프톤, 지스타 10년 연속 참가…아이브 협업 앞세워 현장 공략',
+      '크래프톤이 부산 벡스코에서 개최되는 지스타 2026에 참가한다.'],
+    ['https://www.khgames.co.kr/news/articleView.html?idxno=309956',"크래프톤, '지스타 2026'서 신작 4종 시연",
+      '크래프톤이 지스타 2026 주요 현장 프로그램을 공개했다.'],
+    ['https://www.youthdaily.co.kr/news/article.html?no=229292','PUBG 전장에 아이브 뜬다(?)…크래프톤, 지스타 2026 체험 콘텐츠 확대',
+      '게임전시회 지스타 2026에서 아이브 협업 콘텐츠를 오프라인으로 선보인다.']
+  ];
+  articles.forEach(([url,title,description],i)=>insert.run(url,'크래프톤',title,description,now-6000+i*500,now));
+  insert.run('https://new-deal.example/game-publishing','크래프톤',
+    '크래프톤, 지스타 2026에서 신규 퍼블리싱 계약 체결',
+    '크래프톤이 새 게임 파트너와 계약을 체결했다.',
+    now-2000,now);
+  const result=await runNewsCheck(f.env,now);
+  assert.equal(result.sent,1,'already delivered G-STAR briefing has six variants but should not send');
+  assert.equal(f.replies.length,1);
+  assert.match(f.replies[0].text,/신규 퍼블리싱 계약/);
+  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='크래프톤' ORDER BY pub_ms").all();
+  assert.equal(rows.length,7);
+  for (const row of rows.slice(0,6)){
+    assert.equal(row.duplicate_of,'event:krafton-gstar-2026-program-briefing-2026-11-03',row.url);
+    assert.ok(row.sent_ms!==null);
+  }
+  assert.equal(rows[6].duplicate_of,null);
+  assert.ok(rows[6].sent_ms!==null);
+});
