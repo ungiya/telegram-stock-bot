@@ -4,7 +4,28 @@ const DAY=86400000;
 const normalize=value=>String(value||'').normalize('NFKC').toLowerCase();
 const stamp=item=>Number(item.pub_ms ?? item.publishedAt);
 const laborContext=/(?:노조|노동조합|조합원|노사|사무\s*기술직|노동자|임단협)/;
-const payContext=/(?:임금|급여|성과급|임단협|보상|기본급|교섭)/;
+const payContext=/(?:임금|급여|성과급|임단협|임협|보상|기본급|교섭)/;
+
+// A headline can report a strike *scheduled* for tomorrow without using the
+// words "예고" or "예정": "4일부터 72시간 전면파업". Determine stage from
+// publication date in Korea, not from the wording "돌입한다" in its excerpt.
+function announcedFutureStrike(item, headline) {
+  if (!/파업/.test(headline)) return false;
+  const scheduled = headline.match(/(?:오는\s*)?(?:(\d{1,2})\s*월\s*)?(\d{1,2})\s*일\s*부터.{0,50}파업/);
+  if (!scheduled) return false;
+  const published=stamp(item);
+  if (!Number.isFinite(published)) return false;
+  const at=new Date(published+9*3600000);
+  const year=at.getUTCFullYear();
+  const todayMonth=at.getUTCMonth()+1, todayDay=at.getUTCDate();
+  const targetMonth=scheduled[1]?Number(scheduled[1]):todayMonth;
+  const targetDay=Number(scheduled[2]);
+  if (targetMonth<1||targetMonth>12||targetDay<1||targetDay>31) return false;
+  const target=Date.UTC(year,targetMonth-1,targetDay);
+  // The notice must refer to an upcoming date, not a strike already underway.
+  return target>Date.UTC(year,todayMonth-1,todayDay) &&
+         target-Date.UTC(year,todayMonth-1,todayDay)<=35*DAY;
+}
 
 export function laborStage(item) {
   const headline=normalize(item.title);
@@ -14,6 +35,7 @@ export function laborStage(item) {
   // the excerpt must not turn a new strike / settlement into a repeat warning.
   if(/파업\s*(?:철회|취소|중단|종료)|쟁의\s*(?:철회|중단)/.test(headline))return 'withdrawn';
   if(/임금\s*(?:협상|교섭).{0,14}(?:타결|합의)|(?:임단협|노사).{0,14}(?:타결|합의)|잠정\s*합의|협상\s*타결/.test(headline))return 'settled';
+  if (announcedFutureStrike(item,headline)) return 'announced';
   if(/(?:실제|본격|첫|부분|전면|총)?\s*파업.{0,12}(?:돌입|시작|진행|강행|실시|벌였|벌여|첫날)|(?:돌입|시작).{0,10}파업/.test(headline)
      && !/예고|예정|계획|가능성|경고|시사|초읽기|앞두/.test(headline))return 'started';
   if(/파업.{0,15}(?:예고|예정|계획|가능성|경고|시사|초읽기|앞두)|(?:첫|부분|총|전면)\s*파업\s*(?:선언|예고)|파업\s*(?:카드|경고장)/.test(headline))return 'announced';
@@ -48,6 +70,8 @@ export function reportedHyosungStrikeNotice(item) {
     const host=url.hostname.toLowerCase().replace(/^www\./,'');
     if(host==='mdtoday.co.kr'&&url.pathname==='/news/articleView.html'&&
       url.searchParams.get('idxno')==='622617')return true;
+    if(host==='businesspost.co.kr'&&url.pathname==='/BP'&&
+      url.searchParams.get('command')==='article_view'&&url.searchParams.get('num')==='451009')return true;
   }catch { /* Reworded articles can still be matched by event. */ }
   const t=stamp(item);
   if(!Number.isFinite(t)||t<Date.parse('2026-11-01T00:00:00+09:00')||
