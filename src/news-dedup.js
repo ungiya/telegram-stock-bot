@@ -1,4 +1,5 @@
 import { outlookRelation } from './outlook-events.js';
+import { earningsRelation, reportedAlteogenQ3 } from './earnings-events.js';
 import { laborRelation, reportedHyosungStrikeNotice } from './labor-events.js';
 import { conferenceRelation, reportedPharmGynCongress } from './conference-events.js';
 import { personnelRelation, reportedSkPersonnel } from './personnel-events.js';
@@ -176,6 +177,10 @@ export function sameNews(a, b) {
   if (transferred !== null) return transferred;
   const labor = laborRelation(a,b);
   if (labor !== null) return labor;
+  // Group financial results by the actual fiscal period, before the generic
+  // amount-conflict and 'milestone' checks compare publisher-specific metrics.
+  const earnings = earningsRelation(a,b);
+  if (earnings !== null) return earnings;
   if (conflictingFacts(a.title, b.title)) return false;
   const aFlags = eventFlags(a.title), bFlags = eventFlags(b.title);
   if (aFlags.some((flag, i) => flag !== bFlags[i])) return false;
@@ -285,6 +290,7 @@ export function reportedKiffLaunch(item) {
 }
 
 export function coveredNewsEvent(item) {
+  if (reportedAlteogenQ3(item)) return 'event:alteogen-q3-2026-earnings-release';
   if (reportedHyosungStrikeNotice(item)) return 'event:hyosung-wage-union-first-strike-warning-2026-11-03';
   if (reportedPharmGynCongress(item)) return 'event:pharmaresearch-gyn-congress-22-oct-18-2026';
   if (reportedKiffLaunch(item)) return 'event:krafton-kiff-kpop-ai-chat-launch-2026-11-02';
