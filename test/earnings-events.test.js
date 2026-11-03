@@ -86,3 +86,17 @@ test('earnings dedup does not block legitimate prior-year earnings and future qu
   assert.equal(reportedAlteogenQ3({...story,ticker:'파마리서치'}),false);
   assert.equal(reportedAlteogenQ3({...story,title:'알테오젠 3분기 영업이익 정정공시'}),false);
 });
+
+test('new screenshots: 3Q spelling and omitted quarter with 789억 profit',()=>{
+ const a={ticker:'알테오젠',title:'알테오젠, 분기 매출 첫 1000억원 돌파 … 영업이익은 789억원',description:'알테오젠이 창사 이래 처음으로 분기 매출 1000억원을 넘어섰다. 파트너사 MSD의 키트루다 피하주사(SC) 제형 판매가 늘면서 알테오젠이 받는 판매 마일스톤이 증가했고 신규 기술수출 2건도...',pub_ms:t,url:'https://biz.newdaily.co.kr/site/data/html/2026/11/03/2026110300228.html'};
+ const b={...a,title:"'키트루다SC 판매확대·기술수출 2건' 알테오젠, 3Q 영업익 789억·전년동...",description:'알테오젠이 올해 3분기 연결 실적을 잠정 집계한 결과 영업이익이 789억원으로 전년 동기 267억원 대비 195.8% 증가했다.',url:'https://www.catchnews.kr/news/articleView.html?idxno=130146'};
+ assert.equal(earningsProfile({...b,description:''}).quarter,3);
+ for(const x of [a,b]) {assert.ok(coveredNewsEvent(x));assert.equal(queuedNewsExcluded(x),true);}
+ assert.equal(sameNews(a,b),true);assert.equal(sameNews(b,a),true);
+ assert.equal(sameNews({...a,ticker:'다른회사'},{...b,ticker:'다른회사'}),true);
+ for(const suffix of [' 전망',' 정정',' 신규 공급 계약 체결']) {
+  assert.equal(reportedAlteogenQ3({...a,title:a.title+suffix}),false);
+ }
+ assert.equal(reportedAlteogenQ3({...a,pub_ms:t+10*86400000}),false);
+ assert.notEqual(earningsRelation(a,{...b,title:'다른 영업이익',description:'올해 3분기 영업이익 500억원'}),true);
+});
