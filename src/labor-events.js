@@ -30,12 +30,20 @@ function announcedFutureStrike(item, headline) {
 export function laborStage(item) {
   const headline=normalize(item.title);
   const body=headline+' '+normalize(item.description);
-  if(!laborContext.test(body) || !payContext.test(body)) return '';
+  // Strike/union coverage can describe the employer's legal response without
+  // repeating the wage demand in Naver's short article excerpt.
+  if(!laborContext.test(body) || (!payContext.test(body) && !/파업/.test(headline))) return '';
   // The headline drives stage classification: an older warning mentioned in
   // the excerpt must not turn a new strike / settlement into a repeat warning.
   if(/파업\s*(?:철회|취소|중단|종료)|쟁의\s*(?:철회|중단)/.test(headline))return 'withdrawn';
   if(/임금\s*(?:협상|교섭).{0,14}(?:타결|합의)|(?:임단협|노사).{0,14}(?:타결|합의)|잠정\s*합의|협상\s*타결/.test(headline))return 'settled';
   if (announcedFutureStrike(item,headline)) return 'announced';
+  // Multi-outlet headlines often say "첫 파업" or "법과 원칙 대응"
+  // while the Naver excerpt contains the key point: a strike is only planned.
+  if (/파업/.test(headline) &&
+      !/돌입했|시작했|파업\s*(?:첫날|진행\s*중)|실제\s*파업|파업을\s*실시했/.test(headline) &&
+      /파업.{0,36}(?:예고|예정|계획|앞두)|(?:오는|내일부터|다음주|향후).{0,45}파업|파업을\s*예고한|파업\s*방침|파업\s*(?:계획|예정)/.test(body))
+    return 'announced';
   if(/(?:실제|본격|첫|부분|전면|총)?\s*파업.{0,12}(?:돌입|시작|진행|강행|실시|벌였|벌여|첫날)|(?:돌입|시작).{0,10}파업/.test(headline)
      && !/예고|예정|계획|가능성|경고|시사|초읽기|앞두/.test(headline))return 'started';
   if(/파업.{0,15}(?:예고|예정|계획|가능성|경고|시사|초읽기|앞두)|(?:첫|부분|총|전면)\s*파업\s*(?:선언|예고)|파업\s*(?:카드|경고장)/.test(headline))return 'announced';
@@ -72,6 +80,9 @@ export function reportedHyosungStrikeNotice(item) {
       url.searchParams.get('idxno')==='622617')return true;
     if(host==='businesspost.co.kr'&&url.pathname==='/BP'&&
       url.searchParams.get('command')==='article_view'&&url.searchParams.get('num')==='451009')return true;
+    if(host==='businesskorea.co.kr'&&url.pathname==='/news/articleView.html'&&
+      url.searchParams.get('idxno')==='280312')return true;
+    if(host==='magazine.hankyung.com'&&url.pathname.replace(/\/$/,'')==='/business/article/202611032664b')return true;
   }catch { /* Reworded articles can still be matched by event. */ }
   const t=stamp(item);
   if(!Number.isFinite(t)||t<Date.parse('2026-11-01T00:00:00+09:00')||
