@@ -1,3 +1,4 @@
+import { fetchFilingBody, filingMessages } from './dart-body.js';
 import { liveWatchlist, telegram } from './commands.js';
 
 // Separate invocation from news; bounded to eight API pages and five sends per tick.
@@ -152,7 +153,7 @@ export async function runDartCheck(env, now = Date.now()) {
         env.DB.prepare('UPDATE dart_filings SET sent_ms = ? WHERE ticker = ? AND sent_ms IS NULL').bind(now, ticker),
       ]);
     }
-    let sent = 0;
+    let sent = 0, messageCount = 0;
     const paused = (await env.DB.prepare('SELECT paused FROM bot_runtime WHERE id = 1').first())?.paused;
     if (!paused && current.size) {
       const active = [...current.keys()], placeholders = active.map(() => '?').join(',');
@@ -163,16 +164,40 @@ export async function runDartCheck(env, now = Date.now()) {
         const runtime = await env.DB.prepare('SELECT paused FROM bot_runtime WHERE id = 1').first();
         if (runtime.paused) break;
         if (!(await liveWatchlist(env)).has(item.ticker)) continue;
-        if (sent) await new Promise(resolve => setTimeout(resolve, 1100));
-        await telegram(env, 'sendMessage', { chat_id: env.TELEGRAM_CHAT_ID, text: formatDartMessage(item), link_preview_options: { is_disabled: false } });
+        let delivery = await env.DB.prepare('SELECT * FROM dart_body_delivery WHERE receipt_no=?').bind(item.receipt_no).first();
+        if (!delivery) {
+          let body = '';
+          try { body = await fetchFilingBody(env, item.receipt_no); }
+          catch { console.warn('DART body unavailable', item.receipt_no); }
+          const messages = filingMessages(item, body);
+          await env.DB.prepare('INSERT OR IGNORE INTO dart_body_delivery(receipt_no,messages_json) VALUES(?,?)')
+            .bind(item.receipt_no, JSON.stringify(messages)).run();
+          delivery = await env.DB.prepare('SELECT * FROM dart_body_delivery WHERE receipt_no=?').bind(item.receipt_no).first();
+        }
+        const messages = JSON.parse(delivery.messages_json);
+        let part = delivery.next_part;
+        while (part < messages.length && messageCount < 6) {
+          if ((await env.DB.prepare('SELECT paused FROM bot_runtime WHERE id=1').first()).paused || !(await liveWatchlist(env)).has(item.ticker)) break;
+          // Renew the same invocation's ownership before every part.
+          const lock = await env.DB.prepare('UPDATE dart_runtime SET lock_until_ms=? WHERE id=1 AND lock_owner=? RETURNING id')
+            .bind(Date.now()+240000, owner).first();
+          if (!lock) throw Error('DART delivery ownership lost');
+          if (messageCount) await new Promise(resolve => setTimeout(resolve, 1100));
+          await telegram(env, 'sendMessage', { chat_id: env.TELEGRAM_CHAT_ID, text: messages[part], link_preview_options: { is_disabled: true } });
+          part++; messageCount++;
+          await env.DB.prepare('UPDATE dart_body_delivery SET next_part=? WHERE receipt_no=?').bind(part,item.receipt_no).run();
+        }
+        if (part < messages.length) break;
         await env.DB.prepare('UPDATE dart_filings SET sent_ms = ? WHERE receipt_no = ?').bind(now, item.receipt_no).run();
         sent++;
+        if (messageCount >= 6) break;
       }
     }
     const summary = 'DART 확인: ' + companies.size + '개 관심 종목 · 발송 ' + sent + '건' + (collected.complete ? '' : ' · 나머지 공시 목록 확인 중');
     await env.DB.prepare('UPDATE dart_runtime SET last_checked_ms = ?, last_summary = ? WHERE id = 1').bind(now, summary).run();
     // Keep 30 days of exact receipt-number deduplication history.
     await env.DB.prepare('DELETE FROM dart_filings WHERE sent_ms IS NOT NULL AND discovered_ms < ?').bind(now - 30 * 86400000).run();
+    await env.DB.prepare('DELETE FROM dart_body_delivery WHERE receipt_no NOT IN (SELECT receipt_no FROM dart_filings)').run();
     console.log(summary);
     return { enabled: true, sent, ...collected };
   } catch (error) {

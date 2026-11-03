@@ -16,9 +16,16 @@ function fixture(t) {
     return statement();
   }, async batch(statements) { sql.exec('BEGIN'); try { const result = []; for (const statement of statements) result.push(await statement.run()); sql.exec('COMMIT'); return result; } catch (e) { sql.exec('ROLLBACK'); throw e; } } };
   const original = globalThis.fetch, replies = [], queries = [];
-  let pages = [[]], failure = '', sendFailure = false, hook, redirects = [];
+  let pages = [[]], failure = '', sendFailure = false, hook, redirects = [], documentBody = '';
+  let failPart = 0;
   globalThis.fetch = async (url, options) => {
     const parsed = new URL(url);
+    if (parsed.pathname === '/api/document.xml') return new Response('<result><status>014</status></result>');
+    if (parsed.hostname === 'dart.fss.or.kr') {
+      if(!documentBody)return new Response('',{status:503});
+      if(parsed.pathname.includes('main.do')) return new Response('viewDoc("'+parsed.searchParams.get('rcpNo')+'", "123", "0", "0", "0", "HTML")');
+      return new Response('<html><body><p>'+documentBody+'</p></body></html>');
+    }
     if (parsed.hostname === 'opendart.fss.or.kr') {
       // Match Workers, which rejects redirect:error before making any network request.
       if (!['manual', 'follow'].includes(options.redirect)) throw new TypeError('Unsupported redirect mode');
@@ -37,6 +44,7 @@ function fixture(t) {
       return Response.json({ status: '000', total_page: pages.length, list: pages[number - 1] || [] });
     }
     if (parsed.hostname === 'api.telegram.org') {
+      if (failPart && replies.length + 1 === failPart) { failPart=0; return Response.json({ok:false},{status:500}); }
       if (sendFailure) return Response.json({ ok: false }, { status: 500 });
       const body = JSON.parse(options.body); replies.push(body); return Response.json({ ok: true, result: {} });
     }
@@ -44,6 +52,7 @@ function fixture(t) {
   };
   t.after(() => { globalThis.fetch = original; sql.close(); });
   return { sql, replies, queries, env: { DB, DART_API_KEY: 'test-dart-secret', TELEGRAM_BOT_TOKEN: 'test-bot-secret', TELEGRAM_CHAT_ID: '111' },
+    setDocument: value => { documentBody=value; }, failPart: value => { failPart=value; },
     setRedirects: value => { redirects = value; }, setPages: value => { pages = value; }, fail: value => { failure = value; }, failSend: value => { sendFailure = value; }, setHook: value => { hook = value; } };
 }
 const NOW = Date.parse('2026-11-02T01:00:00Z');
@@ -219,4 +228,17 @@ test('control request reports API codes and never exposes bodies, keys or networ
   f.fail('010'); assert.equal(await diagnoseDartRequest(f.env), '최소 요청 API 010');
   f.fail('sensitive-test-secret'); assert.equal(await diagnoseDartRequest(f.env), '최소 요청 API unknown');
   f.fail('network'); assert.equal(await diagnoseDartRequest(f.env), '최소 요청도 연결 또는 응답 해석 실패');
+});
+
+
+test('multipart filing resumes after failure without repeating confirmed parts', async t => {
+  const f=fixture(t);f.setPages([[old]]);await runDartCheck(f.env,NOW);
+  f.setDocument('계약상대와 계약금액 본문 내용입니다. '.repeat(200));f.setPages([[fresh,old]]);f.failPart(2);
+  await assert.rejects(runDartCheck(f.env,NOW+60000), /Telegram/);
+  assert.equal(f.replies.length,1);
+  assert.equal(f.sql.prepare('SELECT next_part FROM dart_body_delivery WHERE receipt_no=?').get(fresh.rcept_no).next_part,1);
+  const first=f.replies[0].text;
+  assert.equal((await runDartCheck(f.env,NOW+120000)).sent,1);
+  assert.equal(f.replies.filter(x=>x.text===first).length,1);
+  assert.match(f.replies[1].text,/본문 2\//);
 });
