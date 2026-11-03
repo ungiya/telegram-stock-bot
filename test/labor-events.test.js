@@ -70,3 +70,42 @@ test('unrelated union stories and delayed re-reporting are not swept into prior 
   assert.equal(laborRelation(report,{...syndication,title:'효성중공업 분기 영업이익 상승'}),null);
   assert.equal(coveredNewsEvent({...syndication,title:'효성중공업 임금 협상 결렬',description:'노조와 사측의 협상이 결렬됐다'}),null);
 });
+
+
+test('BusinessPost Nov 3 72-hour strike notice matches the prior warning across outlets',()=>{
+  const published=Date.parse('2026-11-03T10:24:00+09:00');
+  const latest={
+    ticker:'효성중공업',
+    title:'효성중공업 사무기술직 노조, 임협 진통에 4일부터 72시간 전면파업',
+    description:'효성중공업 사무기술직 노동조합은 오는 4일부터 6일까지 72시간 전면파업에 돌입한다고 3일 밝혔다. 효성중공업 사무기술직 노조는 지난 6월5일 출범한 뒤 올해 회사와 첫 임금 및 단체협약(임단협) 교섭을 진행했다.',
+    url:'https://www.businesspost.co.kr/BP?command=article_view&num=451009',
+    pub_ms:published
+  };
+  assert.equal(laborStage(latest),'announced','future Nov 4 72-hour strike is a notice on Nov 3');
+  assert.equal(laborRelation(report,latest),true);
+  assert.equal(sameNews(report,latest),true);
+  const marker='event:hyosung-wage-union-first-strike-warning-2026-11-03';
+  assert.equal(coveredNewsEvent(latest),marker);
+  assert.equal(coveredNewsEvent({...latest,pub_ms:undefined,description:''}),marker,'already delivered exact URL is never resent');
+  assert.equal(coveredNewsEvent({...latest,url:'https://other-publisher.example/strike'}),marker);
+  assert.equal(queuedNewsExcluded(latest),true);
+  const incoming={
+    originallink:latest.url,
+    link:'https://n.news.naver.com/mnews/article/000/0001',
+    title:latest.title,description:latest.description,
+    pubDate:new Date(latest.pub_ms).toUTCString()
+  };
+  assert.equal(normalizeArticle(incoming,'효성중공업',published+3600000),null);
+  // The actual strike can be reported as it happens the following day.
+  const real={...latest,url:'https://independent.example/real',
+    pub_ms:Date.parse('2026-11-04T09:00:00+09:00'),
+    title:'효성중공업 사무기술직 노조, 4일 오전 실제 72시간 전면파업 돌입'};
+  assert.equal(laborStage(real),'started');
+  assert.equal(laborRelation(report,real),false);
+  assert.equal(coveredNewsEvent(real),null);
+  // Quoting the original strike schedule after the date has passed does not
+  // wrongly reclassify a genuine later article as a future notice.
+  assert.notEqual(laborStage({...real,title:latest.title}),'announced');
+  assert.equal(coveredNewsEvent({...latest,url:'https://other-publisher.example/phase2',
+    title:'효성중공업 노조, 임금 교섭 결렬에 2차 파업 예고'}),null);
+});
