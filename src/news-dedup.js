@@ -1,3 +1,4 @@
+import { icoobSeersIntegration, integrationRelation } from './integration-events.js';
 import { outlookRelation } from './outlook-events.js';
 import { earningsRelation, reportedAlteogenQ3 } from './earnings-events.js';
 import { laborRelation, reportedHyosungStrikeNotice } from './labor-events.js';
@@ -177,6 +178,8 @@ export function sameNews(a, b) {
   if (transferred !== null) return transferred;
   const labor = laborRelation(a,b);
   if (labor !== null) return labor;
+  const integrated = integrationRelation(a,b);
+  if (integrated !== null) return integrated;
   // Group financial results by the actual fiscal period, before the generic
   // amount-conflict and 'milestone' checks compare publisher-specific metrics.
   const earnings = earningsRelation(a,b);
@@ -290,6 +293,7 @@ export function reportedKiffLaunch(item) {
 }
 
 export function coveredNewsEvent(item) {
+  if (icoobSeersIntegration(item)) return 'event:seers-icoob-labconnect-thync-cgm-integration-2026-11-03';
   if (reportedAlteogenQ3(item)) return 'event:alteogen-q3-2026-earnings-release';
   if (reportedHyosungStrikeNotice(item)) return 'event:hyosung-wage-union-first-strike-warning-2026-11-03';
   if (reportedPharmGynCongress(item)) return 'event:pharmaresearch-gyn-congress-22-oct-18-2026';
