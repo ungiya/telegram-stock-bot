@@ -433,3 +433,23 @@ test('publisher command accepts Korean alias, pagination and requires authorizat
   await command(f,'publishers','1',222);
   assert.equal(f.replies.length,previous);
 });
+
+
+test('two different outlets covering one gyn conference produce a single Telegram alert',async t=>{
+  const f=fixture(t), now=Date.now();
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  insert.run('https://outlet-a.example/gyn-press','파마리서치',
+    '파마리서치 산부인과 춘계학술대회서 창상피복재 자이너 소개',
+    '파마리서치는 산부인과 춘계학술대회에서 창상피복재 활용 사례를 소개했다.',
+    now-9000,now);
+  insert.run('https://outlet-b.example/gyn-press','파마리서치',
+    '파마리서치 산부인과 춘계학술대회서 PN 관련 임상 사례 공유',
+    '산부인과 춘계학술대회에서 의료진과 PN 적용 경험을 공유했다.',
+    now-5000,now);
+  const result=await runNewsCheck(f.env);
+  assert.equal(result.sent,1,'only one conference alert is sent');
+  assert.equal(f.replies.length,1);
+  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='파마리서치' ORDER BY url").all();
+  assert.ok(rows.every(row=>row.sent_ms!==null));
+  assert.equal(rows.filter(row=>row.duplicate_of!==null).length,1);
+});
