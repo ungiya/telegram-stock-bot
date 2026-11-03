@@ -55,7 +55,7 @@ test('actual walkouts, settlements, withdrawals, and later strike notices stay a
     title:'효성중공업 노조, 임금 인상 협상 재개로 파업 철회'};
   const second={...syndication,url:'https://other.example/second',
     title:'효성중공업 노조, 임금협상 결렬에 2차 파업 예고'};
-  for (const [item,stage] of [[actual,'started'],[settled,'withdrawn'],[cancelled,'withdrawn'],[second,'announced']]) {
+  for (const [item,stage] of [[actual,'started'],[settled,'settled'],[cancelled,'withdrawn'],[second,'announced']]) {
     assert.equal(laborStage(item),stage,item.title);
     assert.equal(coveredNewsEvent(item),null,item.title);
     assert.equal(sameNews(report,item),false,item.title);
