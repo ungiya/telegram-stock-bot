@@ -5,7 +5,7 @@ import { ALIASES } from './watchlist.js';
 // The Naver excerpt often covers ANOTHER company, so treating a roundup as
 // company-specific creates noisy reposts and can misattribute material facts.
 // This rule applies to every watchlist ticker, regardless of publisher or date.
-const topicHeader = /(?:브리핑|게임\s*월드|게임월드|업계\s*(?:소식|동향|뉴스)|산업\s*(?:소식|동향|뉴스)|기업\s*(?:소식|동향|뉴스)|(?:오늘|금주|주간)의\s*(?:뉴스|이슈|소식)|(?:한눈에|모아보기|모아본|뉴스\s*모음|주요\s*소식)|(?:마켓|비즈|산업)\s*인사이드)/i;
+const topicHeader = /(?:브리핑|게임\s*월드|게임월드|업계\s*(?:소식|동향|뉴스)|산업\s*(?:소식|동향|뉴스)|기업\s*(?:소식|동향|뉴스)|(?:오늘|금주|주간)의\s*(?:(?:게임|바이오|제약|산업|시장|기업|증시)\s*)?(?:뉴스|이슈|소식)|(?:한눈에|모아보기|모아본|뉴스\s*모음|주요\s*소식)|(?:마켓|비즈|산업)\s*인사이드)/i;
 const splitBulletin = /[·ㆍ,，|/]|(?:\s+[×xX]\s+)|(?:\s*[-–—]\s*)/;
 // Widely-covered companies need not all be on the user's watchlist.
 const otherNames = [
@@ -36,11 +36,15 @@ export function isMultiCompanyRoundup(title) {
   if(!headline) return false;
   const companies=companyNamesInTitle(headline);
   if(companies.size < 2) return false;
-  const header=headline.match(/^\s*(?:\[[^\]]{2,60}\]|【[^】]{2,60}】|〈[^〉]{2,60}〉)/u);
-  const editorialPrefix=header?.[0] || headline.slice(0,55);
+  const knownTickers=[...Object.keys(ALIASES)].sort((a,b)=>b.length-a.length);
+  // Telegram/legacy senders may prepend "[ticker]" before the source title.
+  const withoutTicker=headline.replace(/^\[([^\]]+)\]\s*/, (all,label) =>
+    knownTickers.includes(label) ? '' : all);
+  const header=withoutTicker.match(/^\s*(?:\[[^\]]{2,60}\]|【[^】]{2,60}】|〈[^〉]{2,60}〉)/u);
+  const editorialPrefix=header?.[0] || withoutTicker.slice(0,55);
   const isDigest=topicHeader.test(editorialPrefix);
   // Distinguish an editorial digest from a single article comparing companies.
-  const afterHeader=header ? headline.slice(header[0].length).trim() : headline;
+  const afterHeader=header ? withoutTicker.slice(header[0].length).trim() : withoutTicker;
   const companyList=splitBulletin.test(afterHeader);
   const multipleBullets=(headline.match(/[▲■◆◇▶●]/g)||[]).length>=2;
   return (isDigest && (companyList || multipleBullets)) ||
