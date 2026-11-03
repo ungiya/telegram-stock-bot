@@ -17,6 +17,27 @@ const musinsaInvestmentNews = /기업\s*공개|\bipo\b|상장|예비\s*심사|�
 const musinsaFinancialResults = /(?:매출|거래액).{0,20}(?:\d|전년|분기|영업\s*이익|순이익|급증|증가|감소|실적)|(?:분기|연간|연결|전년|지난해|작년|올해).{0,20}(?:매출|거래액|실적)/i;
 const musinsaRetailActivity = /(?:패션|브랜드|스토어|매장|무신사\s*스탠다드|무신사\s*뷰티).{0,28}(?:출시|런칭|론칭|영입|발탁|선임|오픈|개점|입점|팝업|쇼핑|판매|공개|컬렉션|대전|기획전|행사|콜라보|협업)|(?:출시|런칭|론칭|입점|팝업|컬렉션|화보|영입|선임).{0,25}(?:패션|브랜드|스토어|매장|무신사\s*스탠다드|무신사\s*뷰티)/i;
 
+// Wadiz is tracked for its own corporate developments, NOT as a
+// marketplace feed of campaigns, makers, products or funding participation.
+// Do not use excerpt keywords to rescue a consumer-project headline.
+const wadizCorporateSubject = /^(?:\[[^\]]{0,40}\]\s*)?(?:크라우드\s*펀딩\s*플랫폼\s*)?와디즈(?=\s|[,，.…·"'“‘(]|[는가의측]|$)/i;
+const wadizMakerLead = /^(?:\[[^\]]{0,40}\]\s*)?와디즈(?:서|에서|를?\s*통해|\s*(?:프로젝트|펀딩|메이커|입점|서포터|리워드))/i;
+const wadizCampaign = /겨울|여름|난방|가전|패션|뷰티|화장품|식품|여행|캠핑|선물|생활용품|반려동물|리워드|서포터|메이커|프로젝트|신제품|인기\s*(?:상품|펀딩)|상품\s*(?:출시|판매)|펀딩\s*(?:참여|프로젝트|성공|오픈|진행|달성|모금|추천)|(?:참여|후원)\s*(?:자|율|증가)|기획전|쇼핑|쿠폰|할인|특가|프로모션|시즌|트렌드|카테고리|판매\s*량|브랜드\s*런칭/i;
+const wadizCapital = /기업\s*공개|\bipo\b|상장(?:\s*예비)?\s*(?:심사|청구|추진|계획|준비|승인|철회|폐지)|상장\s*주관사|증권\s*신고서|공모\s*(?:가|주|청약)|투자\s*유치|자금\s*조달|시리즈\s*[a-f]\b|유상\s*증자|무상\s*증자|전환\s*사채|회사채|지분\s*(?:인수|매각)|인수\s*합병|\bm&a\b|경영권|최대\s*주주|자사주|배당/i;
+const wadizFinancial = /(?:분기|연간|연결|잠정|지난해|올해|전년\s*동기).{0,24}(?:실적|매출(?:액)?|영업\s*이익|영업\s*손실|순이익|거래액)|(?:영업\s*이익|영업\s*손실|당기\s*순이익|순이익|영업손익|회사\s*매출|연결\s*매출|플랫폼\s*거래액).{0,22}(?:\d|증가|감소|기록|발표|공시|흑자|적자|돌파|달성)|(?:흑자|적자)\s*전환|재무\s*제표|감사\s*의견|기업\s*가치|기업\s*밸류에이션/i;
+const wadizGovernance = /(?:대표\s*이사|최고\s*경영자|\bceo\b|신임\s*대표).{0,16}(?:선임|사임|교체|취임|해임)|(?:선임|사임|교체|취임|해임).{0,16}(?:대표\s*이사|최고\s*경영자|\bceo\b)|구조\s*조정|사업\s*(?:재편|매각|인수)|자회사\s*(?:설립|매각)|횡령|배임|소송|과징금|행정\s*처분|회생|파산|법정\s*관리|회계\s*감리/i;
+const wadizContract = /(?:신규\s*사업|신사업)\s*(?:진출|출범|인수)|(?:해외|현지)\s*법인\s*(?:설립|신설)|(?:공급|수출)\s*계약\s*(?:체결|수주)|(?:대규모|전략적)\s*(?:사업\s*)?(?:인수|합병)/i;
+export function wadizCompanyNewsAllowed(title) {
+  const headline = String(title || '').normalize('NFKC').trim();
+  if (!wadizCorporateSubject.test(headline) || wadizMakerLead.test(headline)) return false;
+  const finance = wadizFinancial.test(headline);
+  if (!(finance || wadizCapital.test(headline) || wadizGovernance.test(headline) || wadizContract.test(headline))) return false;
+  // Funding projects about third-party makers may quote 'IPO' or investment.
+  // Actual company earnings can still survive a broader industry headline.
+  if (wadizCampaign.test(headline) && !finance) return false;
+  return true;
+}
+
 export function companyNewsAllowed(ticker, title, description = '') {
   const company = String(ticker).normalize('NFKC').toLowerCase().replace(/\s/g, '');
   if (['ls일렉트릭', 'lselectric', '엘에스일렉트릭'].includes(company)) {
@@ -27,6 +48,7 @@ export function companyNewsAllowed(ticker, title, description = '') {
     const concrete = /수주|공급\s*계약|수출\s*계약|계약\s*체결|잠정\s*실적|분기\s*실적|실적\s*(?:발표|공시)|영업\s*이익|순이익|공장.{0,12}(?:증설|신설|준공|착공)|신제품\s*출시|인수\s*합병|지분\s*인수|자사주|배당|소송|리콜|행정\s*처분/.test(headline);
     if (/구\s*자\s*균/.test(text) && !concrete) return false;
   }
+  if (ticker === '와디즈') return wadizCompanyNewsAllowed(title);
   if (ticker !== '무신사') return true;
   const headline = String(title || '');
   const excerpt = String(description || '');
