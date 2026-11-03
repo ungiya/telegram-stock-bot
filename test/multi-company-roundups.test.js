@@ -74,6 +74,8 @@ test('one-company material updates and company comparisons are not incorrectly r
   }
   assert.equal(isMultiCompanyRoundup('[산업 브리핑] 크래프톤 신작 게임 공개'),false);
   assert.equal(isMultiCompanyRoundup('[게임월드] 지스타 2026 크래프톤 단독 인터뷰'),false);
+  assert.equal(isMultiCompanyRoundup('[산업 브리핑] 크래프톤, 새로운 전략 발표'),false);
+  assert.equal(isMultiCompanyRoundup('[게임 브리핑] 크래프톤·아이브 협업 신작 발표'),false);
 });
 
 test('digest rule does not require any pre-listed URL, event year or publisher',()=>{
@@ -82,6 +84,8 @@ test('digest rule does not require any pre-listed URL, event year or publisher',
     '[게임 브리핑] 카카오게임즈·엔씨·크래프톤',
     '[게임월드] 크래프톤·넷마블·컴투스',
     '[기업 브리핑] 에이피알·아모레퍼시픽·애경산업',
+    '[게임 브리핑] 크래프톤·새게임사·또다른회사',
+    '[산업 브리핑] 에이피알·신생바이오사',
   ];
   for(const title of titles)assert.equal(isMultiCompanyRoundup(title),true,title);
 });
