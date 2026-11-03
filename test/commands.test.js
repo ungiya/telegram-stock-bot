@@ -582,3 +582,35 @@ test('six repackaged Krafton G-STAR 2026 announcements in D1 send zero alerts wh
   assert.equal(rows[6].duplicate_of,null);
   assert.ok(rows[6].sent_ms!==null);
 });
+
+
+
+test('future-proof multi-company digests from several publishers never generate Telegram alerts',async t=>{
+  const f=fixture(t),now=Date.parse('2026-11-03T15:35:00+09:00');
+  t.mock.timers.enable({apis:['Date'],now});
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  insert.run('https://www.niceeconomy.co.kr/news/articleView.html?idxno=91676','크래프톤',
+    '[게임 브리핑] 컴투스·엔씨·크래프톤',
+    '◇크래프톤, 지스타 2026 현장 프로그램 공개. 크래프톤은 부산 벡스코에서 열리는 주요 현장 프로그램을 공개했다.',now-9000,now);
+  insert.run('https://www.dnews.co.kr/uhtml/view.jsp?idxno=202611031142511790387','크래프톤',
+    '[게임월드] 크래프톤·엔씨·NC AI·카카오게임즈·컴투스',
+    '▲엔씨 리니지M 브랜드상 수상 ▲크래프톤, 지스타 2026 아이브 협업 프로그램을 선보인다.',now-8000,now);
+  insert.run('https://future.example/todays-news','크래프톤',
+    '[오늘의 게임 소식] 크래프톤, 넷마블, 넥슨',
+    '▲크래프톤 사업 소식 ▲넷마블 운영 ▲넥슨 서비스',now-7000,now);
+  insert.run('https://future.example/beauty-roundup','에이피알',
+    '[산업 브리핑] 에이피알·아모레퍼시픽·애경산업',
+    '◇에이피알 3분기 실적 발표 ▲아모레퍼시픽 신제품 소개',now-6000,now);
+  insert.run('https://new.example/krafton-real-earnings','크래프톤',
+    '크래프톤 3분기 영업이익 3000억원 발표','크래프톤이 3분기 영업이익을 발표했다.',now-5000,now);
+  const result=await runNewsCheck(f.env,now);
+  assert.equal(result.sent,1,'four cross-company digests filtered and genuine earnings delivered');
+  assert.equal(f.replies.length,1);
+  assert.match(f.replies[0].text,/크래프톤 3분기 영업이익/);
+  const rows=f.sql.prepare("SELECT url, sent_ms, duplicate_of FROM articles WHERE url LIKE '%niceeconomy%' OR url LIKE '%dnews%' OR url LIKE '%future.example%' OR url LIKE '%new.example%' ORDER BY pub_ms").all();
+  assert.equal(rows.length,5);
+  for(const row of rows.slice(0,4))assert.ok(row.sent_ms!==null,'queued roundup handled without sending '+row.url);
+  assert.ok(rows[4].sent_ms!==null);
+  // Unrelated digest titles in another period or outlet will also be blocked
+  // by the general policy rather than hard-coded URL/event keys.
+});
