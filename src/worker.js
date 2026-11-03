@@ -313,7 +313,7 @@ export default {
   async fetch(request) {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/health") {
-      return Response.json({ ok: true, purpose: "stock-news-alert", interval: "adaptive news; commands and DART every minute" });
+      return Response.json({ ok: true, purpose: "stock-news-alert", interval: "adaptive news; commands and DART every minute", news_filter_version: NEWS_POLICY_VERSION });
     }
     return new Response("Not found", { status: 404 });
   },
