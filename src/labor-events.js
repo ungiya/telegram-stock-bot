@@ -38,14 +38,14 @@ export function laborStage(item) {
   if(/파업\s*(?:철회|취소|중단|종료)|쟁의\s*(?:철회|중단)/.test(headline))return 'withdrawn';
   if(/임금\s*(?:협상|교섭).{0,14}(?:타결|합의)|(?:임단협|노사).{0,14}(?:타결|합의)|잠정\s*합의|협상\s*타결/.test(headline))return 'settled';
   if (announcedFutureStrike(item,headline)) return 'announced';
+  if(/(?:실제|본격|첫|부분|전면|총)?\s*파업.{0,12}(?:돌입|시작|진행|강행|실시|벌였|벌여|첫날)|(?:돌입|시작).{0,10}파업/.test(headline)
+     && !/예고|예정|계획|가능성|경고|시사|초읽기|앞두/.test(headline))return 'started';
   // Multi-outlet headlines often say "첫 파업" or "법과 원칙 대응"
   // while the Naver excerpt contains the key point: a strike is only planned.
   if (/파업/.test(headline) &&
       !/돌입했|시작했|파업\s*(?:첫날|진행\s*중)|실제\s*파업|파업을\s*실시했/.test(headline) &&
       /파업.{0,36}(?:예고|예정|계획|앞두)|(?:오는|내일부터|다음주|향후).{0,45}파업|파업을\s*예고한|파업\s*방침|파업\s*(?:계획|예정)/.test(body))
     return 'announced';
-  if(/(?:실제|본격|첫|부분|전면|총)?\s*파업.{0,12}(?:돌입|시작|진행|강행|실시|벌였|벌여|첫날)|(?:돌입|시작).{0,10}파업/.test(headline)
-     && !/예고|예정|계획|가능성|경고|시사|초읽기|앞두/.test(headline))return 'started';
   if(/파업.{0,15}(?:예고|예정|계획|가능성|경고|시사|초읽기|앞두)|(?:첫|부분|총|전면)\s*파업\s*(?:선언|예고)|파업\s*(?:카드|경고장)/.test(headline))return 'announced';
   if(/(?:쟁의\s*행위|파업)\s*(?:찬반\s*)?투표|쟁의권\s*확보|투표\s*가결/.test(headline))return 'vote';
   if(/(?:임단협|임금\s*협상|노사\s*교섭).{0,14}(?:결렬|난항|교착)/.test(headline))return 'negotiation';
