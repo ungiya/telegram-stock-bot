@@ -1,4 +1,5 @@
 import { outlookRelation } from './outlook-events.js';
+import { laborRelation, reportedHyosungStrikeNotice } from './labor-events.js';
 import { conferenceRelation, reportedPharmGynCongress } from './conference-events.js';
 import { personnelRelation, reportedSkPersonnel } from './personnel-events.js';
 import { clinicalRelation } from './clinical-events.js';
@@ -173,6 +174,8 @@ export function sameNews(a, b) {
   if (personnel !== null) return personnel;
   const transferred = assetTransferRelation(a, b);
   if (transferred !== null) return transferred;
+  const labor = laborRelation(a,b);
+  if (labor !== null) return labor;
   if (conflictingFacts(a.title, b.title)) return false;
   const aFlags = eventFlags(a.title), bFlags = eventFlags(b.title);
   if (aFlags.some((flag, i) => flag !== bFlags[i])) return false;
@@ -282,6 +285,7 @@ export function reportedKiffLaunch(item) {
 }
 
 export function coveredNewsEvent(item) {
+  if (reportedHyosungStrikeNotice(item)) return 'event:hyosung-wage-union-first-strike-warning-2026-11-03';
   if (reportedPharmGynCongress(item)) return 'event:pharmaresearch-gyn-congress-22-oct-18-2026';
   if (reportedKiffLaunch(item)) return 'event:krafton-kiff-kpop-ai-chat-launch-2026-11-02';
   if (reportedSkPersonnel(item)) return 'event:sk-innovation-2027-personnel-2026-10-30';
