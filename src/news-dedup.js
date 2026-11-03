@@ -1,3 +1,4 @@
+import { outlookRelation } from './outlook-events.js';
 import { personnelRelation, reportedSkPersonnel } from './personnel-events.js';
 import { clinicalRelation } from './clinical-events.js';
 import { assetTransferRelation } from './asset-transfer-events.js';
@@ -180,6 +181,8 @@ export function sameNews(a, b) {
   // Material financial amounts and reporting-quarter changes still do.
   if (conflictingFacts(a.description, b.description, new Set(['amount', '분기']))) return false;
   if (at === bt) return true;
+  const outlook = outlookRelation(a,b);
+  if (outlook !== null) return outlook;
   if (matchingEvent(a, b)) return true;
   if (productLaunchRelation(a,b)) return true;
   if (samePressRelease(a,b)) return true;
