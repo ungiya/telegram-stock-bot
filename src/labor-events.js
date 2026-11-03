@@ -9,22 +9,25 @@ const payContext=/(?:임금|급여|성과급|임단협|임협|보상|기본급|�
 // A headline can report a strike *scheduled* for tomorrow without using the
 // words "예고" or "예정": "4일부터 72시간 전면파업". Determine stage from
 // publication date in Korea, not from the wording "돌입한다" in its excerpt.
-function announcedFutureStrike(item, headline) {
-  if (!/파업/.test(headline)) return false;
+function strikeScheduleDayOffset(item, headline) {
   const scheduled = headline.match(/(?:오는\s*)?(?:(\d{1,2})\s*월\s*)?(\d{1,2})\s*일\s*부터.{0,50}파업/);
-  if (!scheduled) return false;
+  if (!scheduled) return null;
   const published=stamp(item);
-  if (!Number.isFinite(published)) return false;
+  if (!Number.isFinite(published)) return null;
   const at=new Date(published+9*3600000);
   const year=at.getUTCFullYear();
   const todayMonth=at.getUTCMonth()+1, todayDay=at.getUTCDate();
   const targetMonth=scheduled[1]?Number(scheduled[1]):todayMonth;
   const targetDay=Number(scheduled[2]);
-  if (targetMonth<1||targetMonth>12||targetDay<1||targetDay>31) return false;
+  if(targetMonth<1||targetMonth>12||targetDay<1||targetDay>31)return null;
   const target=Date.UTC(year,targetMonth-1,targetDay);
-  // The notice must refer to an upcoming date, not a strike already underway.
-  return target>Date.UTC(year,todayMonth-1,todayDay) &&
-         target-Date.UTC(year,todayMonth-1,todayDay)<=35*DAY;
+  if (new Date(target).getUTCDate()!==targetDay)return null;
+  return (target-Date.UTC(year,todayMonth-1,todayDay))/DAY;
+}
+function announcedFutureStrike(item, headline) {
+  if(!/파업/.test(headline))return false;
+  const days=strikeScheduleDayOffset(item,headline);
+  return days!==null && days>0 && days<=35;
 }
 
 export function laborStage(item) {
@@ -43,6 +46,7 @@ export function laborStage(item) {
   // Multi-outlet headlines often say "첫 파업" or "법과 원칙 대응"
   // while the Naver excerpt contains the key point: a strike is only planned.
   if (/파업/.test(headline) &&
+      (strikeScheduleDayOffset(item,headline)===null || strikeScheduleDayOffset(item,headline)>0) &&
       !/돌입했|시작했|파업\s*(?:첫날|진행\s*중)|실제\s*파업|파업을\s*실시했/.test(headline) &&
       /파업.{0,36}(?:예고|예정|계획|앞두)|(?:오는|내일부터|다음주|향후).{0,45}파업|파업을\s*예고한|파업\s*방침|파업\s*(?:계획|예정)/.test(body))
     return 'announced';
