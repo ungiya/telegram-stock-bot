@@ -19,8 +19,12 @@ function matchingGynConference(a,b) {
   if(!Number.isFinite(ta)||!Number.isFinite(tb)||Math.abs(ta-tb)>21*DATE_DAY)return null;
   const ea=edition(at),eb=edition(bt);
   const ya=statedYear(at),yb=statedYear(bt);
-  const sa=season(at),sb=season(bt);
+  // Source headlines may omit "autumn" even when the lead makes it explicit.
+  const sa=season(at+' '+normalized(a.description)),sb=season(bt+' '+normalized(b.description));
   if((ea&&eb&&ea!==eb)||(ya&&yb&&ya!==yb)||(sa&&sb&&sa!==sb))return false;
+  // An explicit edition in just one headline is not automatically the same
+  // conference. The user-reported October 18 meeting is edition 22.
+  if((ea&&!eb||eb&&!ea)&&(ea||eb)!=='22')return false;
   if(concreteMilestone.test(at)||concreteMilestone.test(bt))return false;
   // Shared specialty, congress type and near publication date are the event
   // identity; individual article product focus need not match.
