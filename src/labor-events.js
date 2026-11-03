@@ -80,6 +80,7 @@ export function reportedHyosungStrikeNotice(item) {
   try {
     const url=new URL(item.url);
     const host=url.hostname.toLowerCase().replace(/^www\./,'');
+    if(host==='yna.co.kr'&&url.pathname==='/view/AKR20261103052951003')return true;
     if(host==='mdtoday.co.kr'&&url.pathname==='/news/articleView.html'&&
       url.searchParams.get('idxno')==='622617')return true;
     if(host==='businesspost.co.kr'&&url.pathname==='/BP'&&
