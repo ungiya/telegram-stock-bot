@@ -202,3 +202,16 @@ test('queued APR marketing articles are suppressed even if saved before the new 
   assert.equal(queuedNewsExcluded(item),true);
   assert.equal(queuedNewsExcluded({...item,title:'에이피알 3분기 매출 7731억원 기록'}),false);
 });
+
+
+test('public health response exposes deployed news filter version without secrets',async()=>{
+  const {default:worker}=await import('../src/worker.js');
+  const {NEWS_POLICY_VERSION}=await import('../src/news-policy-version.js');
+  const response=await worker.fetch(new Request('https://telegram-stock-news-alert.example.workers.dev/health'));
+  assert.equal(response.status,200);
+  const json=await response.json();
+  assert.equal(json.ok,true);
+  assert.equal(json.news_filter_version,NEWS_POLICY_VERSION);
+  assert.equal(json.purpose,'stock-news-alert');
+  assert.equal(await (await worker.fetch(new Request('https://telegram-stock-news-alert.example.workers.dev/secret'))).text(),'Not found');
+});
