@@ -31,11 +31,24 @@ function companyNamesInTitle(value) {
   return new Set(matches);
 }
 
+function multiCompanyList(afterHeader) {
+  // Catch new/unlisted publishers and companies without maintaining an
+  // exhaustive list of business names. Stop at the first full sentence;
+  // a standalone story may mention other companies in background copy.
+  const lead=String(afterHeader||'').split(/[.!?…。]/,1)[0].slice(0,160);
+  const parts=lead.split(splitBulletin).map(x=>x.trim()).filter(Boolean);
+  const organization=part => part.length>=2 && part.length<=23 &&
+    !/^(?:에서|부터|때문|위해|관련|현장)/.test(part) &&
+    !/(?:공개|발표|신작|시연|출시|전망|협업|체결|실적|수주|상승|하락|제공|진출|개최|운영|확대|참가|프리뷰|프로그램|체험|공략|투자|계약|화제)/.test(part) &&
+    part.split(/\s+/).length<=3;
+  return parts.length>=2 && organization(parts[0]) && organization(parts[1]);
+}
+
 export function isMultiCompanyRoundup(title) {
   const headline=String(title||'').normalize('NFKC').trim();
   if(!headline) return false;
   const companies=companyNamesInTitle(headline);
-  if(companies.size < 2) return false;
+  if(companies.size < 1) return false;
   const knownTickers=[...Object.keys(ALIASES)].sort((a,b)=>b.length-a.length);
   // Telegram/legacy senders may prepend "[ticker]" before the source title.
   const withoutTicker=headline.replace(/^\[([^\]]+)\]\s*/, (all,label) =>
@@ -47,6 +60,8 @@ export function isMultiCompanyRoundup(title) {
   const afterHeader=header ? withoutTicker.slice(header[0].length).trim() : withoutTicker;
   const companyList=splitBulletin.test(afterHeader);
   const multipleBullets=(headline.match(/[▲■◆◇▶●]/g)||[]).length>=2;
-  return (isDigest && (companyList || multipleBullets)) ||
+  // Strongly grounded: either multiple recognizable companies OR an
+  // editorial list of plausible company names (including future companies).
+  return (isDigest && ((companies.size>=2 && companyList) || multiCompanyList(afterHeader))) ||
     (multipleBullets && companies.size >= 3);
 }
