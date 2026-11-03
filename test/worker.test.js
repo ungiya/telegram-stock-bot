@@ -264,3 +264,33 @@ test('CatchNews originals, mobile URLs and pending articles are blocked', async(
  }
  assert.equal(blockedNewsSource('https://notcatchnews.kr/a'),false);
 });
+
+
+test('WeMakeNews and CatchNews blocked site-wide in new search and pending queue',async()=>{
+  const {queuedNewsExcluded}=await import('../src/worker.js');
+  const now=Date.parse('2026-11-03T16:21:00+09:00');
+  for(const domain of ['wemakenews.co.kr','catchnews.kr']){
+    for(const site of [
+      'https://www.'+domain+'/news/articleView.html?idxno=12345',
+      'http://'+domain+'/news/view.php?no=12345',
+      'https://m.'+domain+'/news/articleView.html?idxno=98765',
+      'https://WWW.'+domain.toUpperCase()+ './news/articleView.html?idxno=98765',
+    ]){
+      assert.equal(blockedNewsSource(site),true,site);
+      for(const ticker of ['크래프톤','에이피알','씨어스']){
+        const title=ticker+' 3분기 실적 발표';
+        assert.equal(normalizeArticle({
+          originallink:site,
+          link:'https://n.news.naver.com/mnews/article/123/456',
+          title,description:title,pubDate:new Date(now).toUTCString()
+        },ticker,now),null,site+' ingestion');
+        assert.equal(queuedNewsExcluded({
+          ticker,title,description:title,url:site,pub_ms:now
+        }),true,site+' queued');
+      }
+    }
+    assert.equal(blockedNewsSource('https://'+domain+'.example.com/article'),false,'domain spoof');
+    assert.equal(blockedNewsSource('https://not'+domain+'/article'),false,'lookalike');
+    assert.equal(blockedNewsSource('https://safe.example/path/'+domain+'/article'),false,'path text');
+  }
+});
