@@ -453,3 +453,23 @@ test('two different outlets covering one gyn conference produce a single Telegra
   assert.ok(rows.every(row=>row.sent_ms!==null));
   assert.equal(rows.filter(row=>row.duplicate_of!==null).length,1);
 });
+
+
+test('two syndicated strike-warning reports result in one Telegram send while a real walkout stays separate',async t=>{
+  const f=fixture(t),now=Date.now();
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  insert.run('https://outlet-a.example/union-a','LS일렉트릭',
+    'LS일렉트릭 노조, 임금 인상 갈등에 첫 파업 예고',
+    'LS일렉트릭 노동조합은 임금 교섭 난항에 따라 파업을 예고했다고 밝혔다.',
+    now-10000,now);
+  insert.run('https://outlet-b.example/union-b','LS일렉트릭',
+    'LS일렉트릭 사무기술직 노조, 임단협 결렬에 파업 예정',
+    '임금과 성과급 협상을 두고 노조와 사측이 충돌하며 노조가 파업을 예고했다.',
+    now-5000,now);
+  const r=await runNewsCheck(f.env);
+  assert.equal(r.sent,1,'same labor-dispute stage from different outlets sends once');
+  assert.equal(f.replies.length,1);
+  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='LS일렉트릭' ORDER BY url").all();
+  assert.equal(rows.filter(x=>x.duplicate_of!==null).length,1);
+  assert.ok(rows.every(x=>x.sent_ms!==null));
+});
