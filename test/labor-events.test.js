@@ -109,3 +109,31 @@ test('BusinessPost Nov 3 72-hour strike notice matches the prior warning across 
   assert.equal(coveredNewsEvent({...latest,url:'https://other-publisher.example/phase2',
     title:'효성중공업 노조, 임금 교섭 결렬에 2차 파업 예고'}),null);
 });
+
+
+test('reported Yonhap Nov 3 strike warning is suppressed, regardless of its excerpt or URL query', () => {
+  const t=Date.parse('2026-11-03T12:38:00+09:00');
+  const article={
+    ticker:'효성중공업',
+    title:'효성중공업 사무직노조, 내일부터 파업…사측 "공장 정상 가동"(종합)',
+    description:'노조 "실적 개선에도 보상 미흡"…사측 "법과 원칙 따라 대응". 노조는 임금 단체협약 결렬을 이유로 파업을 예고했다.',
+    url:'https://www.yna.co.kr/view/AKR20261103052951003?input=1195m',
+    pub_ms:t
+  };
+  const event='event:hyosung-wage-union-first-strike-warning-2026-11-03';
+  assert.equal(laborStage(article),'announced');
+  assert.equal(coveredNewsEvent(article),event);
+  assert.equal(queuedNewsExcluded(article),true);
+  assert.equal(coveredNewsEvent({...article,title:'내용이 바뀌어도 URL이 확인된 기사',description:'',pub_ms:undefined}),event);
+  assert.equal(normalizeArticle({
+    title:article.title,
+    description:article.description,
+    originallink:article.url,
+    link:'https://n.news.naver.com/mnews/article/001/0010000000',
+    pubDate:new Date(t).toUTCString()
+  },'효성중공업',t+3600000),null);
+  const nextPhase={...article,url:'https://example.com/nov4-walkout',
+    title:'효성중공업 사무직 노조, 4일 실제 파업 돌입',
+    pub_ms:Date.parse('2026-11-04T12:00:00+09:00')};
+  assert.equal(coveredNewsEvent(nextPhase),null);
+});
