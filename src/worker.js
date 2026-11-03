@@ -1,3 +1,4 @@
+import { isMultiCompanyRoundup } from './multi-company-roundups.js';
 import { NEWS_POLICY_VERSION } from './news-policy-version.js';
 import { rawPublisherObservation, recordPublisherObservations } from './publishers.js';
 import { withNewsDeliveryLock, findNewsDuplicate, deliverNewsOnce } from './news-delivery.js';
@@ -161,7 +162,8 @@ async function pollTopic(env, ticker, aliases, now, paused) {
 // Re-evaluate already-queued articles against the latest filtering rules.
 // A newly excluded article is marked handled rather than sent on the next tick.
 export function queuedNewsExcluded(item) {
-  return blockedNewsSource(item.url) ||
+  return isMultiCompanyRoundup(item.title) ||
+    blockedNewsSource(item.url) ||
     priceNewsExcluded(item.title) ||
     promotionalNewsExcluded(item.ticker, item.title, item.description) ||
     !companyNewsAllowed(item.ticker, item.title, item.description) ||
