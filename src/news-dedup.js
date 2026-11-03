@@ -1,3 +1,4 @@
+import { rdDayRelation, reportedDndRdDay } from './rd-day-events.js';
 import { buybackRelation, reportedKraftonBuyback } from './buyback-events.js';
 import { gstarProgramRelation, reportedKraftonGstarBriefing } from './expo-events.js';
 import { icoobSeersIntegration, integrationRelation } from './integration-events.js';
@@ -174,6 +175,8 @@ export function sameNews(a, b) {
   if (a.ticker !== b.ticker) return false;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
   if (!at || !bt) return false;
+  const rdDay = rdDayRelation(a,b);
+  if (rdDay !== null) return rdDay;
   const buyback = buybackRelation(a,b);
   if (buyback !== null) return buyback;
   const personnel = personnelRelation(a,b);
@@ -299,6 +302,7 @@ export function reportedKiffLaunch(item) {
 }
 
 export function coveredNewsEvent(item) {
+  if (reportedDndRdDay(item)) return 'event:dnd-pharmatech-rd-day-2026-11-03';
   if (reportedKraftonBuyback(item)) return 'event:krafton-buyback-3000-cancel-2026-11-03';
   if (reportedKraftonGstarBriefing(item)) return 'event:krafton-gstar-2026-program-briefing-2026-11-03';
   if (icoobSeersIntegration(item)) return 'event:seers-icoob-labconnect-thync-cgm-integration-2026-11-03';
