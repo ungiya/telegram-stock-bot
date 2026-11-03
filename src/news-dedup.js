@@ -1,4 +1,5 @@
 import { outlookRelation } from './outlook-events.js';
+import { conferenceRelation, reportedPharmGynCongress } from './conference-events.js';
 import { personnelRelation, reportedSkPersonnel } from './personnel-events.js';
 import { clinicalRelation } from './clinical-events.js';
 import { assetTransferRelation } from './asset-transfer-events.js';
@@ -177,6 +178,8 @@ export function sameNews(a, b) {
   if (aFlags.some((flag, i) => flag !== bFlags[i])) return false;
   const clinical = clinicalRelation(a, b);
   if (clinical !== null) return clinical;
+  const conference = conferenceRelation(a,b);
+  if (conference !== null) return conference;
   // Incidental dates and unrelated endpoints in summaries do not identify a new event.
   // Material financial amounts and reporting-quarter changes still do.
   if (conflictingFacts(a.description, b.description, new Set(['amount', '분기']))) return false;
@@ -269,6 +272,7 @@ export function reportedKiffLaunch(item) {
 }
 
 export function coveredNewsEvent(item) {
+  if (reportedPharmGynCongress(item)) return 'event:pharmaresearch-gyn-congress-22-oct-18-2026';
   if (reportedKiffLaunch(item)) return 'event:krafton-kiff-kpop-ai-chat-launch-2026-11-02';
   if (reportedSkPersonnel(item)) return 'event:sk-innovation-2027-personnel-2026-10-30';
   // This immutable URL was explicitly reported as already received.
