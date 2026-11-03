@@ -13,7 +13,7 @@ test('exclude promotional and price-only headlines, retain material news', () =>
   const allowed = title => newsAllowed('에이피알', ['에이피알'], title);
   assert.equal(allowed('에이피알 할인 쿠폰 증정'), false);
   assert.equal(allowed('에이피알 주가 급등'), false);
-  assert.equal(allowed('에이피알 영업이익 증가에 주가 강세'), true);
+  assert.equal(allowed('에이피알 영업이익 증가에 주가 강세'), false);
   assert.equal(allowed('에이피알 AI 기자 자동 작성'), false);
   assert.equal(allowed('다른 회사 영업이익 증가'), false);
 });

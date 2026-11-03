@@ -132,9 +132,37 @@ function conflictingFacts(a, b, allowed = null) {
   return false;
 }
 function eventFlags(value) {
-  return [ /해지|철회|취소|중단|결렬/, /적자\s*전환|적자전환/, /흑자\s*전환|흑자전환/, /부인|사실무근/, /정정/ ]
+  return [ /해지|철회|취소|중단|결렬/, /적자\s*전환|적자전환/, /흑자\s*전환|흑자전환/, /부인|사실무근/, /정정/, /(?:누적|달성|돌파)/ ]
     .map(pattern => pattern.test(value));
 }
+// All-company press-release matching uses the lead paragraph as well as the
+// headline. Publisher rewrites need not retain the same headline keywords.
+function samePressRelease(a, b) {
+  const timeA = Number(a.pub_ms ?? a.publishedAt), timeB = Number(b.pub_ms ?? b.publishedAt);
+  if (!Number.isFinite(timeA) || !Number.isFinite(timeB) || Math.abs(timeA-timeB) > 7*86400000) return false;
+  const leadA = text(a.description, a.ticker).slice(0, 400);
+  const leadB = text(b.description, b.ticker).slice(0, 400);
+  if (Math.min(leadA.length, leadB.length) < 45) return false;
+  // Concrete progress is not another outlet's copy of the earlier announcement.
+  const followup = /취소|철회|해지|정정|부인|소송|(?:추가|후속|신규)\s*(?:계약|투자|기능|국가)|실적|영업이익|순이익|누적|달성|돌파/;
+  if (followup.test(a.title) || followup.test(b.title)) return false;
+  const action = item => eventAction(item.title) || eventAction(item.description) ||
+    (/행사|개최|모집|접수|페스티벌|박람회/.test(item.title+' '+item.description) ? 'event' : '');
+  const actionA = action(a), actionB = action(b);
+  if (!actionA || actionA !== actionB) return false;
+  const tokens = value => new Set([...keywords(text(value,a.ticker))]
+    .filter(w => w.length >= 3 && !/^(플랫폼|서비스|글로벌|대표|밝혔다|진행한다|개최한다|제공한다|통해|위한|기반|예정이다|있다고|있다)$/.test(w)));
+  const allA = tokens(a.title+' '+a.description), allB = tokens(b.title+' '+b.description);
+  const shared = [...allA].filter(w => allB.has(w));
+  const titleA = tokens(a.title), titleB = tokens(b.title);
+  const headlineEvidence = new Set([...titleA].filter(w => allB.has(w)).concat([...titleB].filter(w => allA.has(w))));
+  // Shared company boilerplate alone cannot collapse unrelated announcements.
+  if (shared.length < 4 || headlineEvidence.size < 2) return false;
+  const ag=grams(leadA), bg=grams(leadB);
+  const intersection=[...ag].filter(g=>bg.has(g)).length;
+  return overlap(ag,bg) >= 0.58 || intersection/Math.min(ag.size,bg.size) >= 0.86;
+}
+
 export function sameNews(a, b) {
   if (a.ticker !== b.ticker) return false;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
@@ -154,6 +182,7 @@ export function sameNews(a, b) {
   if (at === bt) return true;
   if (matchingEvent(a, b)) return true;
   if (productLaunchRelation(a,b)) return true;
+  if (samePressRelease(a,b)) return true;
   const titleSimilarity = overlap(grams(at), grams(bt));
   const ad = text(a.description, a.ticker), bd = text(b.description, b.ticker);
   if (Math.min(at.length, bt.length) >= 12 && titleSimilarity >= 0.87) return true;

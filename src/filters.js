@@ -76,6 +76,13 @@ export function promotionalNewsExcluded(ticker, title, description = '') {
   return !hardEvent.test(headline);
 }
 
+// Price-movement stories remain excluded even when their background mentions earnings.
+export function priceNewsExcluded(title) {
+  const headline = String(title || '').normalize('NFKC');
+  if (/특징주|상한가|하한가|신고가|신저가|주가.{0,30}(?:상승|하락|급등|급락|강세|약세|오름|내림|반등|하락세|상승세)|\d+(?:[.]\d+)?\s*%.{0,8}(?:상승|하락|급등|급락|↑|↓)|(?:상승|하락|급등|급락).{0,8}\d+(?:[.]\d+)?\s*%/.test(headline)) return true;
+  return market.test(headline) && !material.test(headline);
+}
+
 export const norm = value => String(value).toLowerCase().replace(/[^\p{L}\p{N}_]/gu, "");
 export function newsAllowed(ticker, aliases, title, description = "") {
   const text = title + " " + description;
@@ -85,7 +92,7 @@ export function newsAllowed(ticker, aliases, title, description = "") {
   if (analystNewsExcluded(title, description)) return false;
   if (!companyNewsAllowed(ticker, title, description)) return false;
   if (promotion.test(title) && !material.test(title)) return false;
-  if (market.test(title) && !material.test(text)) return false;
+  if (priceNewsExcluded(title)) return false;
   if (ticker === "크래프톤") {
     if (business.test(title)) return true;
     if (tournament.test(title)) return false;
