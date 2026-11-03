@@ -513,3 +513,33 @@ test('already queued APR multi-company beauty roundup is skipped but earnings an
   assert.doesNotMatch(f.replies[0].text,/똑똑한케어/);
   assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url=?').get(prUrl).sent_ms!==null);
 });
+
+
+
+test('user-reported Seers/iKoob LabConnect repeated coverage sends zero duplicates, a new supply contract still sends',async t=>{
+  const f=fixture(t),now=Date.parse('2026-11-03T13:40:00+09:00');
+  t.mock.timers.enable({apis:['Date'],now});
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  insert.run('https://www.thefairnews.co.kr/news/articleView.html?idxno=92899','씨어스',
+    "[씨어스] '의료데이터 한곳에 모은다'…아이쿱 'LabConnect' 중심 씨어스 연동 확대",
+    "아이쿱의 의료데이터 통합 플랫폼 LabConnect에 씨어스의 모니터링 솔루션 thynC 및 CGM LiVE 연속혈당 기술 연동",
+    now-9000,now);
+  insert.run('https://other-press.example/icoob-seers','씨어스',
+    '[씨어스] 아이쿱, 씨어스 입원환자 모니터링 솔루션에 연속혈당 솔루션 적용',
+    '씨어스 thynC 와 아이쿱의 랩커넥트 CGM LiVE를 연동',
+    now-8000,now);
+  insert.run('https://new-contract.example/seers','씨어스',
+    '씨어스 아이쿱 CGM LiVE 신규 공급 계약 체결',
+    '씨어스가 아이쿱과 신규 공급 계약을 체결했다.',
+    now-7000,now);
+  const r=await runNewsCheck(f.env,now);
+  assert.equal(r.sent,1,'the two already-covered partnership integration headlines must not send');
+  assert.equal(f.replies.length,1);
+  assert.match(f.replies[0].text,/신규 공급 계약/);
+  const rows=f.sql.prepare("SELECT title,duplicate_of,sent_ms FROM articles WHERE ticker='씨어스' ORDER BY pub_ms").all();
+  assert.equal(rows.length,3);
+  assert.equal(rows[0].duplicate_of,'event:seers-icoob-labconnect-thync-cgm-integration-2026-11-03');
+  assert.equal(rows[1].duplicate_of,'event:seers-icoob-labconnect-thync-cgm-integration-2026-11-03');
+  assert.equal(rows[2].duplicate_of,null);
+  assert.ok(rows.every(x=>x.sent_ms!==null));
+});
