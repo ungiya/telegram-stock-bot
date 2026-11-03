@@ -133,3 +133,46 @@ test('APR marketing publicity is blocked, material developments are preserved', 
   }
   assert.equal(promotionalNewsExcluded('크래프톤','크래프톤 신규 게임 출시'),false);
 });
+
+
+
+test('Wadiz only sends its own corporate events, never seasonal funding projects', async () => {
+  const { wadizCompanyNewsAllowed, companyNewsAllowed } = await import('../src/filters.js');
+  const rejected=[
+    '[와디즈] 와디즈, 겨울 난방 가전 펀딩 참여 50% 증가…공간·전력 효율 높은 제품',
+    '와디즈, 겨울 난방 가전 펀딩 참여 50% 증가',
+    '와디즈, 9~10월 난방 가전 펀딩 프로젝트 서포터 참여 50%↑',
+    '와디즈, 연말 쇼핑 리워드 캠페인 성료',
+    '와디즈에서 200억원 투자 유치한 스타트업',
+    '와디즈, IPO 준비하는 스타트업 펀딩 프로젝트 추천',
+    '와디즈, 인기 가전 제품 및 신제품 추천',
+    '와디즈, 메이커 펀딩 성공으로 쇼핑 트렌드 주도',
+    '와디즈, 겨울용 난방 가전 펀딩 증가…지난해 영업실적 발표 기업도 참여',
+    '와디즈, 프로젝트 거래액 50% 증가',
+  ];
+  for(const title of rejected) {
+    assert.equal(wadizCompanyNewsAllowed(title),false,title);
+    assert.equal(companyNewsAllowed('와디즈',title,'와디즈 투자 유치·IPO 준비 소식도 언급'),false,title);
+    assert.equal(newsAllowed('와디즈',['와디즈'],title,'자사 스타트업 참여와 투자 유치'),false,title);
+  }
+  const accepted=[
+    '와디즈 IPO 예비심사 청구',
+    '와디즈, 기업공개 추진…상장 주관사 선정',
+    '와디즈 시리즈 D 투자 유치 200억원',
+    '와디즈 3분기 연결 매출 150억원·영업이익 20억원',
+    '와디즈, 지난해 연간 실적 발표',
+    '와디즈 지난해 영업이익 흑자 전환',
+    '와디즈, 신임 대표이사 선임',
+    '와디즈, 경쟁업체 지분 인수',
+    '와디즈 회사채 발행 100억원 자금 조달',
+    '와디즈, 자회사 설립',
+    '와디즈, 개인정보 관련 과징금 부과',
+    '와디즈, 해외 법인 설립',
+  ];
+  for(const title of accepted) {
+    assert.equal(wadizCompanyNewsAllowed(title),true,title);
+    assert.equal(newsAllowed('와디즈',['와디즈'],title,''),true,title);
+  }
+  assert.equal(wadizCompanyNewsAllowed('무신사 IPO 예비심사 청구'),false);
+  assert.equal(companyNewsAllowed('에이피알','에이피알 3분기 영업이익 발표'),true);
+});
