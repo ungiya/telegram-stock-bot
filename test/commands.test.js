@@ -492,3 +492,24 @@ test('one company Q3 earnings release from three outlets produces only one Teleg
   assert.equal(rows.filter(row=>row.duplicate_of!==null).length,2);
   assert.ok(rows.every(row=>row.sent_ms!==null));
 });
+
+
+test('already queued APR multi-company beauty roundup is skipped but earnings announcement sends',async t=>{
+  const f=fixture(t),now=Date.now();
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  const prUrl='https://www.ekn.kr/web/view.php?key=20261103021004692';
+  insert.run(prUrl,'에이피알',
+    '[똑똑한케어] 에이피알, 아모레퍼시픽, 더파운더즈 아누아, 애경산업 루나',
+    '◇ 에이피알 메디큐브, 미국·유럽 4개 도시 팝업에 1만5000명 방문 에이피알의 메디큐브가 해외에서 릴레이 팝업 행사를 진행했다.',
+    now-5000,now);
+  insert.run('https://material.example/apr-earnings','에이피알',
+    '에이피알 3분기 영업이익 1606억원 발표',
+    '에이피알은 2026년 3분기 연결 영업이익을 발표했다.',
+    now-4000,now);
+  const result=await runNewsCheck(f.env);
+  assert.equal(result.sent,1);
+  assert.equal(f.replies.length,1);
+  assert.match(f.replies[0].text,/3분기 영업이익/);
+  assert.doesNotMatch(f.replies[0].text,/똑똑한케어/);
+  assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url=?').get(prUrl).sent_ms!==null);
+});
