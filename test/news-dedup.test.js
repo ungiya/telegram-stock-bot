@@ -171,3 +171,27 @@ test('syndicated Krafton service-start and release headlines match the same even
   assert.equal(sameNews(first,{...second,title:'크래프톤 Kiff 글로벌 신규 출시'}),false,
     'a new geographic rollout is a distinct update');
 });
+
+
+test('November 3 Sisajon roundup with Krafton Kiff is a repeat launch, not a fresh company event', async () => {
+ const { coveredNewsEvent, reportedKiffLaunch } = await import('../src/news-dedup.js');
+ const { normalizeArticle, queuedNewsExcluded } = await import('../src/worker.js');
+ const stamp=Date.parse('2026-11-03T09:00:00+09:00');
+ const title="컴투스홀딩스, SOOP과 FMV 게임 시장 공략…크래프톤, K팝 AI 캐릭터 서비스 '키프' 출시";
+ const description="크래프톤은 K팝 AI 캐릭터 챗 서비스 '키프'(Kiff)의 국내 서비스를 시작했다고 3일 밝혔다. 키프는 이용자가 아티스트가 직접 기획한 캐릭터와 대화할 수 있는 서비스다.";
+ const url='https://www.sisajon.co.kr/news/articleView.html?idxno=205735';
+ const item={ticker:'크래프톤',title,description,url,pub_ms:stamp};
+ const event='event:krafton-kiff-kpop-ai-chat-launch-2026-11-02';
+ assert.equal(reportedKiffLaunch(item),true);
+ assert.equal(coveredNewsEvent(item),event);
+ assert.equal(queuedNewsExcluded(item),true);
+ assert.equal(coveredNewsEvent({ticker:'크래프톤',url}),event);
+ const naver={title,description,originallink:url,pubDate:new Date(stamp).toUTCString()};
+ assert.equal(normalizeArticle(naver,'크래프톤',stamp+3600000),null);
+ // An unrelated first item announcing a deal must not allow the already-known
+ // Kiff launch in the second item to bypass event-level duplicate suppression.
+ assert.equal(coveredNewsEvent({...item,url:'https://another.example/roundup',
+   title:"컴투스홀딩스, SOOP과 신규 계약 체결…크래프톤, K팝 AI 캐릭터 서비스 '키프' 출시"}),event);
+ assert.equal(coveredNewsEvent({...item,url:'https://another.example/material',
+   title:"크래프톤, Kiff 이용자 100만명 돌파…신규 해외 출시 확정"}),null);
+});
