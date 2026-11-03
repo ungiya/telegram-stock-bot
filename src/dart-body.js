@@ -1,3 +1,4 @@
+import { summarizeFiling, SUMMARY_MARKER } from './dart-summary.js';
 // Plain-text filing bodies. Never execute document scripts or forward API keys
 // to redirects. Bounded reads protect the news worker from oversized reports.
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -87,9 +88,6 @@ export function filingMessages(item,body){
   const date=item.filed_date.replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3');
   const header='[공시] ['+item.ticker+'] '+item.report_name.slice(0,500)+'\n접수일: '+date;
   const link='https://dart.fss.or.kr/dsaf001/main.do?rcpNo='+item.receipt_no;
-  let content=body || '본문을 불러오지 못했습니다. 원문 링크에서 확인해 주세요.';
-  if(content.length>120000)content=content.slice(0,120000)+'\n[매우 긴 공시로 이후 본문은 원문 링크에서 확인해 주세요.]';
-  const chunks=[];while(content){let n=Math.min(3000,content.length);if(n<content.length){const line=content.lastIndexOf('\n',n);if(line>1500)n=line+1;if(/[\uD800-\uDBFF]/.test(content[n-1]))n--;}
-    chunks.push(content.slice(0,n));content=content.slice(n);}
-  return chunks.map((chunk,i)=>header+(chunks.length>1?'\n본문 '+(i+1)+'/'+chunks.length:'')+'\n\n'+chunk+'\n\n'+link);
+  const content=summarizeFiling(item.report_name, body);
+  return [header+'\n\n'+SUMMARY_MARKER+'\n'+content+'\n\n'+link];
 }

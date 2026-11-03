@@ -39,11 +39,12 @@ test('API redirect is not followed; fallback viewer is pinned to receipt and has
  assert.match(await fetchFilingBody({DART_API_KEY:'secret'},receipt),/계약 본문/);assert.equal(urls.length,3);
  assert.throws(()=>viewerUrl(`viewDoc("20261102800893", "1", "0", "0", "0", "HTML")`,receipt));
 });
-test('long filings split into Telegram-safe numbered parts; missing bodies are explicit',()=>{
- const body='계약금액과 해지사유 📝\n'.repeat(1000), messages=filingMessages(item,body);
- assert.ok(messages.length>1);assert.ok(messages.every(m=>m.length<=4096));
- assert.match(messages[0],/본문 1\//);assert.match(messages.at(-1),/rcpNo=20261102800892$/);
- const recovered=messages.map(m=>m.slice(m.indexOf('\n\n')+2,m.lastIndexOf('\n\n'))).join('');assert.equal(recovered,body);
+test('long filings become a single bounded summary, missing bodies remain explicit',()=>{
+ const body='계약금액(원) | 100,000,000\n계약상대 | 테스트회사\n'+'기타 부연설명입니다.\n'.repeat(2000);
+ const messages=filingMessages(item,body);
+ assert.equal(messages.length,1);assert.ok(messages[0].length<2000);
+ assert.match(messages[0],/핵심 항목/);assert.match(messages[0],/100,000,000/);
+ assert.doesNotMatch(messages[0],/부연설명|본문 1/);
  assert.match(filingMessages(item,'')[0],/본문을 불러오지 못했습니다/);
 });
 test('legacy Korean viewer bytes are decoded before extracting body',async t=>{

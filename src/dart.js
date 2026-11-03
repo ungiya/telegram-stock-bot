@@ -1,3 +1,4 @@
+import { SUMMARY_MARKER } from './dart-summary.js';
 import { fetchFilingBody, filingMessages } from './dart-body.js';
 import { liveWatchlist, telegram } from './commands.js';
 
@@ -174,7 +175,21 @@ export async function runDartCheck(env, now = Date.now()) {
             .bind(item.receipt_no, JSON.stringify(messages)).run();
           delivery = await env.DB.prepare('SELECT * FROM dart_body_delivery WHERE receipt_no=?').bind(item.receipt_no).first();
         }
-        const messages = JSON.parse(delivery.messages_json);
+        let messages = JSON.parse(delivery.messages_json);
+        if (!messages[0]?.includes('\n'+SUMMARY_MARKER+'\n')) {
+          // Stop remaining legacy full-text parts already started. Do not resend
+          // a summary of a filing the user has already received.
+          if (delivery.next_part > 0) {
+            await env.DB.prepare('UPDATE dart_filings SET sent_ms=? WHERE receipt_no=?').bind(now,item.receipt_no).run();
+            continue;
+          }
+          const body = messages.map(message => {
+            const start=message.indexOf('\n\n'), end=message.lastIndexOf('\n\n');
+            return start>=0 && end>start ? message.slice(start+2,end) : '';
+          }).join('');
+          messages=filingMessages(item,body);
+          await env.DB.prepare('UPDATE dart_body_delivery SET messages_json=? WHERE receipt_no=?').bind(JSON.stringify(messages),item.receipt_no).run();
+        }
         let part = delivery.next_part;
         while (part < messages.length && messageCount < 6) {
           if ((await env.DB.prepare('SELECT paused FROM bot_runtime WHERE id=1').first()).paused || !(await liveWatchlist(env)).has(item.ticker)) break;

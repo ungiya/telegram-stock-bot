@@ -231,14 +231,20 @@ test('control request reports API codes and never exposes bodies, keys or networ
 });
 
 
-test('multipart filing resumes after failure without repeating confirmed parts', async t => {
-  const f=fixture(t);f.setPages([[old]]);await runDartCheck(f.env,NOW);
-  f.setDocument('계약상대와 계약금액 본문 내용입니다. '.repeat(200));f.setPages([[fresh,old]]);f.failPart(2);
-  await assert.rejects(runDartCheck(f.env,NOW+60000), /Telegram/);
-  assert.equal(f.replies.length,1);
-  assert.equal(f.sql.prepare('SELECT next_part FROM dart_body_delivery WHERE receipt_no=?').get(fresh.rcept_no).next_part,1);
-  const first=f.replies[0].text;
-  assert.equal((await runDartCheck(f.env,NOW+120000)).sent,1);
-  assert.equal(f.replies.filter(x=>x.text===first).length,1);
-  assert.match(f.replies[1].text,/본문 2\//);
+test('summary is cached and retried after an explicit send failure', async t => {
+ const f=fixture(t);f.setPages([[old]]);await runDartCheck(f.env,NOW);
+ f.setDocument('계약상대 | 테스트회사\n계약금액(원) | 100000000\n'+'부연설명 '.repeat(1000));f.setPages([[fresh,old]]);f.failPart(1);
+ await assert.rejects(runDartCheck(f.env,NOW+60000),/Telegram/);
+ assert.equal(f.replies.length,0);
+ const d=f.sql.prepare('SELECT * FROM dart_body_delivery WHERE receipt_no=?').get(fresh.rcept_no);
+ assert.equal(JSON.parse(d.messages_json).length,1);assert.equal(d.next_part,0);
+ assert.equal((await runDartCheck(f.env,NOW+120000)).sent,1);
+ assert.match(f.replies[0].text,/핵심 항목/);assert.ok(f.replies[0].text.length<2000);
+});
+test('legacy full-body messages already started do not continue after summary rollout',async t=>{
+ const f=fixture(t);f.setPages([[old]]);await runDartCheck(f.env,NOW);
+ f.sql.exec('UPDATE bot_runtime SET paused=1');f.setPages([[fresh,old]]);await runDartCheck(f.env,NOW+60000);
+ f.sql.prepare('INSERT INTO dart_body_delivery(receipt_no,messages_json,next_part) VALUES(?,?,1)').run(fresh.rcept_no,JSON.stringify(['old part one','old part two']));
+ f.sql.exec('UPDATE bot_runtime SET paused=0');await runDartCheck(f.env,NOW+120000);
+ assert.equal(f.replies.length,0);assert.ok(f.sql.prepare('SELECT sent_ms FROM dart_filings WHERE receipt_no=?').get(fresh.rcept_no).sent_ms);
 });
