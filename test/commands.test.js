@@ -473,3 +473,22 @@ test('two syndicated strike-warning reports result in one Telegram send while a 
   assert.equal(rows.filter(x=>x.duplicate_of!==null).length,1);
   assert.ok(rows.every(x=>x.sent_ms!==null));
 });
+
+
+test('one company Q3 earnings release from three outlets produces only one Telegram alert',async t=>{
+  const f=fixture(t),now=Date.now();
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  const titles=[
+    ['https://cbc.example/earnings','서진시스템 3분기 영업이익 788억9500만원…전년비 195.8% 증가','서진시스템이 3분기 영업이익 788억9500만원을 기록했다고 발표했다.'],
+    ['https://infomax.example/earnings','서진시스템, 3분기 영업이익 789억원…3배 증가','서진시스템의 올해 3분기 연결 영업이익 789억원이 잠정 집계됐다.'],
+    ['https://mtn.example/earnings','서진시스템, 창립 첫 분기 매출 1000억원 돌파…수익 확대','서진시스템은 올해 3분기 매출 1000억원을 돌파했으며 영업이익도 전년비 3배 증가했다.']
+  ];
+  titles.forEach(([url,title,description],i)=>insert.run(url,'서진시스템',title,description,now-10000+i*1000,now));
+  const result=await runNewsCheck(f.env);
+  assert.equal(result.sent,1,'syndicated results from three outlets must send once');
+  assert.equal(f.replies.length,1);
+  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='서진시스템' AND url LIKE '%example/earnings' ORDER BY url").all();
+  assert.equal(rows.length,3);
+  assert.equal(rows.filter(row=>row.duplicate_of!==null).length,2);
+  assert.ok(rows.every(row=>row.sent_ms!==null));
+});
