@@ -64,3 +64,12 @@ test('a later unrelated season and unrelated specialty are not grouped', () => {
   assert.equal(conferenceRelation(first,{...second,ticker:'에이피알'}),null);
   assert.equal(reportedPharmGynCongress({...second,title:'파마리서치 산부인과 춘계학술대회서 PN 사례 공유',url:'https://fresh.example/f'}),false);
 });
+
+test('named conference participation dedup works across all companies, years and product headlines',()=>{
+ const a={ticker:'엘앤씨바이오',title:'엘앤씨바이오, 대한수부외과학회 참가…ECM 기반 재건 기술력 선보여',description:"지난달 31일부터 이달 1일까지 진행된 2026년 대한수부외과학회 추계학술대회 및 연수에 참가해 신경 및 연부조직 재건 분야의 주요 제품과 임상 적용 가능성을 소개했다.",pub_ms:Date.parse('2026-11-04T10:30:00+09:00')};
+ const b={...a,title:'엘앤씨바이오, 대한수부외과학회 참가…신경·연부조직 재건 솔루션 소개',description:'메가너브 프라임 중심 제품군 전시…국내 대형병원 약 40곳서 임상 적용 확대. 2026년 대한수부외과학회 추계학술대회 및 연수에 참가해 인체조직 세포외기질(ECM)...'};
+ assert.equal(conferenceRelation(a,b),true);
+ assert.equal(sameNews(a,b),true);assert.equal(sameNews(b,a),true);
+ assert.equal(sameNews({...a,ticker:'다른회사',pub_ms:Date.parse('2030-11-04'),description:a.description.replace('2026','2030')},{...b,ticker:'다른회사',pub_ms:Date.parse('2030-11-04'),description:b.description.replace('2026','2030')}),true);
+ for(const item of [{...b,description:b.description.replace('추계','춘계')},{...b,description:b.description.replace('2026','2027')},{...b,title:'엘앤씨바이오 대한수부외과학회 임상 3상 결과 발표'},{...b,title:'엘앤씨바이오 대한정형외과학회 참가'}]) assert.notEqual(conferenceRelation(a,item),true,item.title);
+});

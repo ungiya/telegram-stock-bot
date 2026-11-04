@@ -32,7 +32,7 @@ function matchingGynConference(a,b) {
 }
 
 export function conferenceRelation(a,b) {
-  return matchingGynConference(a,b);
+  return matchingNamedConference(a,b) ?? matchingGynConference(a,b);
 }
 
 // Two links confirmed already delivered for the Oct 18 gynecology congress.
@@ -60,4 +60,33 @@ export function reportedPharmGynCongress(item) {
   const body=headline+' '+normalized(item.description);
   // Headline/summary must identify this particular fall congress coverage.
   return /추계|제\s*22\s*차|스위스\s*그랜드|개원의사회|자이너|창상\s*피복재|pn\s*관련|pn\s*임상|지난\s*(?:10\s*월\s*)?18\s*일|10\s*월\s*18\s*일/.test(body);
+}
+
+// Any company's coverage of one named society meeting is a single event,
+// even when each outlet headlines a different product or clinical application.
+function matchingNamedConference(a,b) {
+  if(a.ticker!==b.ticker)return null;
+  const at=congressTitle(a),bt=congressTitle(b);
+  const names=t=>new Set(t.match(/[가-힣]{2,25}(?:학회|학술회)/g)||[]);
+  const an=names(at),bn=names(bt);
+  if(![...an].some(n=>bn.has(n)))return null;
+  const attendance=/참가|참여|전시|부스|선보|소개/;
+  if(!attendance.test(at)||!attendance.test(bt))return null;
+  // New scientific outcomes or regulatory/contract news remain independently alertable.
+  if(concreteMilestone.test(at)||concreteMilestone.test(bt)||
+     /(?:임상|연구|시험).{0,12}결과\s*(?:공개|발표)/.test(at+' '+bt))return false;
+  const ta=published(a),tb=published(b);
+  if(!Number.isFinite(ta)||!Number.isFinite(tb)||Math.abs(ta-tb)>3*DATE_DAY)return null;
+  const aa=at+' '+normalized(a.description),bb=bt+' '+normalized(b.description);
+  for(const identify of [edition,statedYear,season]) {
+    const x=identify(aa),y=identify(bb);
+    if(x&&y&&x!==y)return false;
+  }
+  const start=t=>t.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/)?.slice(1).map(Number).join('-')||'';
+  const ad=start(aa),bd=start(bb);
+  if(ad&&bd&&ad!==bd)return false;
+  // A year/season, numbered edition or dated meeting anchors the event.
+  // Bare society names alone are not enough to merge unrelated appearances.
+  const identified=t=>Boolean(edition(t)||start(t)||(statedYear(t)&&season(t)));
+  return identified(aa)&&identified(bb)?true:null;
 }
