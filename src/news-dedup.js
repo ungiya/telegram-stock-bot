@@ -1,3 +1,4 @@
+import { platformLaunchRelation } from './platform-launch-events.js';
 import { commonEventRelation } from './common-news-events.js';
 
 function medicubeCanadaEntry(item) {
@@ -210,6 +211,8 @@ export function sameNews(a, b) {
     ua.growth===ub.growth && Math.abs(ua.stamp-ub.stamp)<=7*86400000;
 
   if (a.ticker !== b.ticker) return false;
+  const platformLaunch=platformLaunchRelation(a,b);
+  if(platformLaunch !== null)return platformLaunch;
   const common=commonEventRelation(a,b);
   if(common !== null) return common;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
