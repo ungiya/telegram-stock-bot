@@ -125,3 +125,12 @@ export function namedExpoRelation(a,b) {
     (aa.start&&bb.start&&aa.start!==bb.start))return false;
  return Math.abs(aa.time-bb.time)<=7*DAY?true:null;
 }
+
+export function exhibitionNeedsContext(item) {
+ const title=norm(item.title),body=title+' '+norm(item.description);
+ return !expoNames(body).size && /전시회|박람회|엑스포/.test(body) &&
+   !independentUpdate.test(title) && !newTitle.test(title);
+}
+export function exhibitionHasIdentity(item) {
+ return expoNames(item.title+' '+item.description).size>0;
+}

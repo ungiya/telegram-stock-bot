@@ -1,3 +1,4 @@
+import { enrichNewsEvent } from './news-event-context.js';
 import { isMultiCompanyRoundup } from './multi-company-roundups.js';
 import { NEWS_POLICY_VERSION } from './news-policy-version.js';
 import { rawPublisherObservation, recordPublisherObservations } from './publishers.js';
@@ -208,8 +209,17 @@ async function sendClaimedNews(env, now, companies, renew) {
   let sent = 0;
   try {
     for (const item of claimed) {
-      const covered = coveredNewsEvent(item);
-      const duplicate = covered ? { url: covered } : await findNewsDuplicate(env,item,Date.now(),renew);
+      await renew();
+      const context=await enrichNewsEvent(item);
+      if(context.held) {
+        await env.DB.prepare('UPDATE articles SET lease_until_ms=? WHERE url=?')
+          .bind(Date.now()+15*60000,item.url).run();
+        console.warn('News held: exhibition identity unavailable',item.url);
+        continue;
+      }
+      const compared=context.item;
+      const covered = coveredNewsEvent(compared);
+      const duplicate = covered ? { url: covered } : await findNewsDuplicate(env,compared,Date.now(),renew);
       if (duplicate) {
         duplicateCount++;
         console.log('News duplicate suppressed', JSON.stringify({url:item.url,matched:duplicate.url}));
@@ -220,7 +230,7 @@ async function sendClaimedNews(env, now, companies, renew) {
       }
       if (sent) await new Promise(resolve => setTimeout(resolve, 1100));
       await renew();
-      const delivered = await deliverNewsOnce(env, item, async () => {
+      const delivered = await deliverNewsOnce(env, compared, async () => {
         const response = await fetch(
           TELEGRAM_API + "/bot" + env.TELEGRAM_BOT_TOKEN + "/sendMessage",
           {
