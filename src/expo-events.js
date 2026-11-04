@@ -93,7 +93,15 @@ function namedExpoProfile(item) {
  const title=at>=0?whole.slice(at):whole;
  const body=expoText(title+' '+item.description);
  const names=expoNames(body),name=[...names][0];
- if(!name || !/참가|참여|출품|전시|부스|선보|첫\s*선|기술\s*공개|솔루션.{0,8}공개/.test(title))return null;
+ if(!name)return null;
+ // The named event itself is the subject. Do not require an outlet to keep
+ // any specific verb ('참가', '선보인다', '선뵌다', '미래 제시') in its headline.
+ // For a generic roundup title, require a company-specific exhibition lead.
+ if(!expoNames(title).size) {
+   const lead=norm(item.description).slice(0,400);
+   if(!lead.includes(norm(item.ticker)) || !expoNames(lead).size ||
+      !/참가|참여|출품|전시|부스|선보|선봬|선뵈|선뵌/.test(lead))return null;
+ }
  if(independentUpdate.test(title)||newTitle.test(title)||expoLive.test(title)||
     /(?:전시|박람회|엑스포).{0,10}(?:수주액|성과|결과)|수주액|계약.{0,8}체결/.test(title))return null;
  const time=published(item);

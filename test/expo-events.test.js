@@ -125,3 +125,17 @@ test('event aliases learned from bilingual names work for future exhibitions and
  const b={...a,title:'미래기업 한국미래산업박람회 참가…신기술 첫 선',description:'2030년 한국미래산업박람회에서 제품을 전시한다.'};
  assert.equal(sameNews(a,b),true);
 });
+
+test('expo identity survives wording variants and general roundup titles with target-company leads',()=>{
+ const pub_ms=Date.parse('2026-11-04T11:30:00+09:00');
+ const first={ticker:'효성중공업',pub_ms,title:'효성중공업, BIXPO 2026 참가…HVDC 국산화 기술 전시',description:'효성중공업은 광주 김대중컨벤션센터 BIXPO 2026에서 장비를 전시했다.'};
+ const stories=[
+  {title:'효성중공업, 빅스포서 서해안 전력망 국산화 핵심 기술 선뵌다',description:'효성중공업이 국내 최대 에너지 산업 전시회에서 초고압직류송전(HVDC), SST(반도체 변압기) 등 차세대 전력망 솔루션을 선보인다. 효성중공업은 이달 4~6일 광주 김대중컨벤션센터에서 열리는 글로벌 전력·에너지...'},
+  {title:'[위클리오늘] 산업일반 소식_KCC, 효성중공업(11.4)',description:"▲ 효성중공업이 BIXPO 2026 전시회에 참가했다. 효성중공업, 광주 BIXPO 참가…전력망 핵심 솔루션 선봬 효성중공업이 4일부터 오는 6일까지 광주 김대중컨벤션센터에서 열리는 전력·에너지 산업 전시회 BIXPO 2026에..."},
+  {title:'효성중공업 BIXPO 2026에서 전력망의 미래 제시',description:'효성중공업 전시회 관련 소식'}
+ ];
+ for(const story of stories){const item={...first,...story};assert.equal(sameNews(first,item),true,story.title);assert.equal(sameNews(item,first),true);}
+ const future={...first,ticker:'다른회사',pub_ms:Date.parse('2031-04-04'),title:'다른회사 FutureExpo 2031 미래 그린다',description:'신기술 전시 소식'};
+ assert.equal(sameNews(future,{...future,title:'다른회사 FutureExpo 2031 참관객 만난다'}),true);
+ assert.equal(sameNews(first,{...first,title:'효성중공업 BIXPO 전시 후 신규 계약 체결'}),false);
+});
