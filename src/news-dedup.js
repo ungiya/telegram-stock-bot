@@ -1,4 +1,17 @@
 
+function medicubeCanadaEntry(item) {
+  if(!['에이피알','APR','에이피알(APR)'].includes(item.ticker))return null;
+  const title=String(item.title||'').normalize('NFKC').toLowerCase();
+  const body=title+' '+String(item.description||'').normalize('NFKC').toLowerCase();
+  if(!/메디큐브|medicube/.test(body)||!/캐나다|canada/.test(body)||
+     !/입점/.test(title)||!/샤퍼스|쇼퍼스|shoppers?\\s*drug\\s*mart|최대\\s*(?:규모\\s*)?드럭\\s*스토어/.test(body))return null;
+  if(/추가\\s*입점|입점\\s*(?:확대|성과|취소|철회)|매출|판매량|판매액|실적|정정/.test(title))return null;
+  const time=Number(item.pub_ms??item.publishedAt);
+  if(!Number.isFinite(time))return null;
+  const count=body.replace(/(?<=\\d),(?=\\d)/g,'').match(/(\\d+)\\s*개\\s*(?:전\\s*)?매장/);
+  return {time,count:count?Number(count[1]):null};
+}
+
 function usedQuarter(item) {
   if(item.ticker!=='무신사')return null;
   const title=String(item.title||'').normalize('NFKC');
@@ -187,6 +200,10 @@ function samePressRelease(a, b) {
 }
 
 export function sameNews(a, b) {
+  const ca=medicubeCanadaEntry(a),cb=medicubeCanadaEntry(b);
+  if(ca&&cb) return Math.abs(ca.time-cb.time)<=7*86400000 &&
+    !(ca.count&&cb.count&&ca.count!==cb.count);
+
   const ua=usedQuarter(a),ub=usedQuarter(b);
   if(ua&&ub) return ua.year===ub.year && ua.quarter===ub.quarter &&
     ua.growth===ub.growth && Math.abs(ua.stamp-ub.stamp)<=7*86400000;
@@ -321,6 +338,12 @@ export function reportedKiffLaunch(item) {
 }
 
 export function coveredNewsEvent(item) {
+  const canada=medicubeCanadaEntry(item);
+  if(canada && (!canada.count||canada.count===1300) &&
+     canada.time>=Date.parse('2026-11-04T00:00:00+09:00') &&
+     canada.time<Date.parse('2026-11-11T00:00:00+09:00'))
+    return 'event:apr-medicube-canada-shoppers-1300-2026-11-04';
+
   const used=usedQuarter(item);
   if(used && used.year==='2026' && used.quarter==='3' && used.growth===143 &&
      used.stamp>=Date.parse('2026-11-04T00:00:00+09:00') &&
