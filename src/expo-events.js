@@ -57,6 +57,8 @@ export function reportedKraftonGstarBriefing(item){
 }
 
 export function gstarProgramRelation(a,b) {
+  const named=namedExpoRelation(a,b);
+  if(named!==null)return named;
   if(a.ticker!==b.ticker) return null;
   const at=published(a),bt=published(b);
   if(!Number.isFinite(at)||!Number.isFinite(bt)||Math.abs(at-bt)>7*DAY) return null;
@@ -65,4 +67,36 @@ export function gstarProgramRelation(a,b) {
   if(isA!==isB && gstar.test(norm(a.title)+' '+norm(a.description)) &&
      gstar.test(norm(b.title)+' '+norm(b.description))) return false;
   return null;
+}
+
+// Shared exhibition identity for all companies, not just a known G-STAR item.
+// The same booth announcement may highlight different showcased technologies.
+function namedExpoProfile(item) {
+ const title=norm(item.title),body=(title+' '+norm(item.description))
+   .replace(/빛가람\s*국제전력기술\s*엑스포|빅스포/g,'bixpo');
+ const name=body.match(/\b([a-z][a-z0-9-]*(?:xpo|expo|fair)|ces|mwc)\b/)?.[1] ||
+   body.match(/([가-힣]{2,25}(?:박람회|엑스포))/)?.[1];
+ if(!name || !/참가|참여|출품|전시|부스|선보|첫\s*선|기술\s*공개/.test(title))return null;
+ if(independentUpdate.test(title)||newTitle.test(title)||expoLive.test(title)||
+    /(?:전시|박람회|엑스포).{0,10}(?:수주액|성과|결과)|수주액|계약.{0,8}체결/.test(title))return null;
+ const time=published(item);
+ if(!Number.isFinite(time))return null;
+ const year=body.match(/20\d{2}/)?.[0]||String(new Date(time+9*3600000).getUTCFullYear());
+ const edition=body.match(/제\s*(\d+)\s*회/)?.[1]||'';
+ const start=body.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/)?.slice(1).map(Number).join('-')||'';
+ return {name,year,edition,start,time};
+}
+export function namedExpoRelation(a,b) {
+ if(a.ticker!==b.ticker)return null;
+ const aa=namedExpoProfile(a),bb=namedExpoProfile(b);
+ if(!aa||!bb) {
+   const known=aa||bb,other=aa?b:a;
+   if(known && norm(other.title+' '+other.description).includes(known.name) &&
+      (independentUpdate.test(norm(other.title)) || /수주액|계약.{0,8}체결/.test(norm(other.title))))return false;
+   return null;
+ }
+ if(aa.name!==bb.name)return false;
+ if(aa.year!==bb.year || (aa.edition&&bb.edition&&aa.edition!==bb.edition) ||
+    (aa.start&&bb.start&&aa.start!==bb.start))return false;
+ return Math.abs(aa.time-bb.time)<=7*DAY?true:null;
 }

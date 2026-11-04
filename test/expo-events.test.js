@@ -103,3 +103,12 @@ test('new contracts, actual releases, an independently unveiled named game, 2027
   assert.equal(sameNews(examples[0],newStories[7]),true,'identical old story republished remains a duplicate');
   assert.equal(coveredNewsEvent({...examples[0],ticker:'넷마블',url:'https://not-reported.example'}),null);
 });
+
+test('all companies group the same named expo despite distinct technology focus and absent headline year',()=>{
+ const a={ticker:'효성중공업',pub_ms:Date.parse('2026-11-04T11:00:00+09:00'),title:'효성중공업, 광주 BIXPO 2026 참가…HVDC 국산화 핵심 기술 첫 선',description:"효성중공업이 4일부터 6일까지 광주 김대중컨벤션센터에서 열리는 BIXPO(빛가람 국제전력기술 엑스포) 2026에 참가해 차세대 전력망 솔루션을 공개한다."};
+ const b={...a,title:'효성중공업, HVDC 국산화 기술 앞세워 BIXPO 참가',description:'효성중공업이 전압형 초고압 직류 송전(HVDC)과 반도체 변압기(SST) 등 차세대 전력망 기술을 앞세워 국내외 전력·에너지 업계와 기술 교류에 나선다. 한국전력의 대용량 전압형 HVDC 국산화...'};
+ assert.equal(sameNews(a,b),true);assert.equal(sameNews(b,a),true);
+ const future={...a,ticker:'다른기업',pub_ms:Date.parse('2030-11-04'),title:a.title.replace('BIXPO 2026','EnergyExpo 2030'),description:'EnergyExpo 2030 참가해 전력 장비를 전시한다.'};
+ assert.equal(sameNews(future,{...future,title:'다른기업 EnergyExpo 참가…반도체 변압기 첫 선'}),true);
+ for(const item of [{...b,title:'효성중공업 BIXPO 2027 참가'},{...b,title:'효성중공업 BIXPO에서 신규 공급 계약 체결'},{...b,title:'효성중공업 BIXPO 참가 후 수주액 100억원 기록'}])assert.equal(sameNews(a,item),false,item.title);
+});
