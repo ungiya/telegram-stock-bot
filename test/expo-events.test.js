@@ -112,3 +112,16 @@ test('all companies group the same named expo despite distinct technology focus 
  assert.equal(sameNews(future,{...future,title:'다른기업 EnergyExpo 참가…반도체 변압기 첫 선'}),true);
  for(const item of [{...b,title:'효성중공업 BIXPO 2027 참가'},{...b,title:'효성중공업 BIXPO에서 신규 공급 계약 체결'},{...b,title:'효성중공업 BIXPO 참가 후 수주액 100억원 기록'}])assert.equal(sameNews(a,item),false,item.title);
 });
+
+test('BIXPO and shortened Bitgaram Expo identify the same event inside a multi-company roundup',()=>{
+ const a={ticker:'효성중공업',pub_ms:Date.parse('2026-11-04T11:20:00+09:00'),title:'코오롱그룹, 수소 핵심 소재·저장 기술 공개…효성중공업, 차세대 전력망 기술 전시',description:"효성중공업은 4일부터 오는 6일까지 광주 김대중컨벤션센터에서 열리는 'BIXPO 2026'에 참가해 차세대 전력망 솔루션을 선보인다고 밝혔다."};
+ const b={...a,title:'효성중공업, 국내서 차세대 전력망 솔루션 대거 공개…빛가람 엑스포 참...',description:'효성중공업이 국내에서 초고압 직류 송전(HVDC), 반도체 변압기(SST) 등을 중심으로 차세대 전력망 솔루션을 대거 공개한다.'};
+ assert.equal(sameNews(a,b),true);assert.equal(sameNews(b,a),true);
+ assert.equal(sameNews({...a,title:a.title.replace('수소 핵심 소재·저장 기술 공개','수소 공급 계약 체결')},b),true,'another company contract must not exempt the target company exhibition duplicate');
+ assert.equal(sameNews(a,{...b,title:'효성중공업 빛가람 엑스포에서 신규 계약 체결'}),false);
+});
+test('event aliases learned from bilingual names work for future exhibitions and companies',()=>{
+ const a={ticker:'미래기업',pub_ms:Date.parse('2030-04-04'),title:'미래기업 NewExpo 2030 참가',description:'NewExpo(한국미래산업박람회) 2030 전시회에 참가해 장비를 소개했다.'};
+ const b={...a,title:'미래기업 한국미래산업박람회 참가…신기술 첫 선',description:'2030년 한국미래산업박람회에서 제품을 전시한다.'};
+ assert.equal(sameNews(a,b),true);
+});

@@ -71,12 +71,29 @@ export function gstarProgramRelation(a,b) {
 
 // Shared exhibition identity for all companies, not just a known G-STAR item.
 // The same booth announcement may highlight different showcased technologies.
+function expoText(value) {
+ return norm(value).replace(/빛가람\s*(?:국제\s*전력\s*기술\s*)?엑스포|빅스포/g,'bixpo');
+}
+function expoNames(value) {
+ const body=expoText(value),names=new Set();
+ for(const m of body.matchAll(/\b([a-z][a-z0-9-]*(?:xpo|expo|fair)|ces|mwc)\b/g))names.add(m[1]);
+ for(const m of body.matchAll(/([가-힣]{2,25}(?:박람회|엑스포))/g))names.add(m[1]);
+ // An observed bilingual name links an acronym to its local event name.
+ for(const m of body.matchAll(/([a-z][a-z0-9-]{2,})\s*\(\s*([가-힣 ]{2,40}(?:박람회|엑스포))\s*\)/g)) {
+   names.add(m[1]);names.add(m[2].replace(/\s/g,''));
+ }
+ for(const m of body.matchAll(/([가-힣 ]{2,40}(?:박람회|엑스포))\s*\(\s*([a-z][a-z0-9-]{2,})\s*\)/g)) {
+   names.add(m[1].replace(/\s/g,''));names.add(m[2]);
+ }
+ return names;
+}
 function namedExpoProfile(item) {
- const title=norm(item.title),body=(title+' '+norm(item.description))
-   .replace(/빛가람\s*국제전력기술\s*엑스포|빅스포/g,'bixpo');
- const name=body.match(/\b([a-z][a-z0-9-]*(?:xpo|expo|fair)|ces|mwc)\b/)?.[1] ||
-   body.match(/([가-힣]{2,25}(?:박람회|엑스포))/)?.[1];
- if(!name || !/참가|참여|출품|전시|부스|선보|첫\s*선|기술\s*공개/.test(title))return null;
+ const whole=norm(item.title),at=whole.lastIndexOf(norm(item.ticker));
+ // A roundup headline may announce an unrelated company's deal first.
+ const title=at>=0?whole.slice(at):whole;
+ const body=expoText(title+' '+item.description);
+ const names=expoNames(body),name=[...names][0];
+ if(!name || !/참가|참여|출품|전시|부스|선보|첫\s*선|기술\s*공개|솔루션.{0,8}공개/.test(title))return null;
  if(independentUpdate.test(title)||newTitle.test(title)||expoLive.test(title)||
     /(?:전시|박람회|엑스포).{0,10}(?:수주액|성과|결과)|수주액|계약.{0,8}체결/.test(title))return null;
  const time=published(item);
@@ -84,18 +101,18 @@ function namedExpoProfile(item) {
  const year=body.match(/20\d{2}/)?.[0]||String(new Date(time+9*3600000).getUTCFullYear());
  const edition=body.match(/제\s*(\d+)\s*회/)?.[1]||'';
  const start=body.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/)?.slice(1).map(Number).join('-')||'';
- return {name,year,edition,start,time};
+ return {name,names,year,edition,start,time};
 }
 export function namedExpoRelation(a,b) {
  if(a.ticker!==b.ticker)return null;
  const aa=namedExpoProfile(a),bb=namedExpoProfile(b);
  if(!aa||!bb) {
    const known=aa||bb,other=aa?b:a;
-   if(known && norm(other.title+' '+other.description).includes(known.name) &&
+   if(known && [...expoNames(other.title+' '+other.description)].some(n=>known.names.has(n)) &&
       (independentUpdate.test(norm(other.title)) || /수주액|계약.{0,8}체결/.test(norm(other.title))))return false;
    return null;
  }
- if(aa.name!==bb.name)return false;
+ if(![...aa.names].some(n=>bb.names.has(n)))return false;
  if(aa.year!==bb.year || (aa.edition&&bb.edition&&aa.edition!==bb.edition) ||
     (aa.start&&bb.start&&aa.start!==bb.start))return false;
  return Math.abs(aa.time-bb.time)<=7*DAY?true:null;
