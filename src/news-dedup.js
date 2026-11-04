@@ -5,7 +5,7 @@ function medicubeCanadaEntry(item) {
   const title=String(item.title||'').normalize('NFKC').toLowerCase();
   const body=title+' '+String(item.description||'').normalize('NFKC').toLowerCase();
   if(!/메디큐브|medicube/.test(body)||!/캐나다|canada/.test(body)||
-     !/입점/.test(title)||!/샤퍼스|쇼퍼스|shoppers?\s*drug\s*mart|최대\s*(?:규모\s*)?드럭\s*스토어/.test(body))return null;
+     !(/입점/.test(body)||(/시장|공략|유통|판로/.test(title)&&/샤퍼스|쇼퍼스|shoppers?/.test(title)))||!/샤퍼스|쇼퍼스|shoppers?\s*drug\s*mart|최대\s*(?:규모\s*)?드럭\s*스토어/.test(body))return null;
   if(/추가\s*입점|입점\s*(?:확대|성과|취소|철회)|매출|판매량|판매액|실적|정정/.test(title))return null;
   const time=Number(item.pub_ms??item.publishedAt);
   if(!Number.isFinite(time))return null;

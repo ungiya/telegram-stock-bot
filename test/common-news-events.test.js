@@ -25,3 +25,11 @@ test('different retail partners and growth bases do not collapse into the same a
  const [c,d]=cases[1];
  assert.equal(commonEventRelation({...c,title:c.title+' 전년 대비'},{...d,title:d.title+' 전분기 대비'}),false);
 });
+test('strategy headline with truncated retail lead matches the same entry event for any company',()=>{
+ const a=item('미래기업, 메디큐브 캐나다 최대 드럭스토어 입점','캐나다 샤퍼스 1300개 전 매장에서 메디큐브 판매를 시작한다.');
+ const b=item('아마존서 샤퍼스까지…미래기업, 캐나다 뷰티시장 공략 속도',"미래기업이 캐나다 주요 유통업체와 잇따라 손잡으며 북미 시장 공략에 속도를 내고 있다. 미래기업은 뷰티 브랜드 메디큐브가 지난달 캐나다 최대 드럭스토어 체인인 샤퍼스 드럭 마트(Shoppers Drug...");
+ assert.equal(commonEventRelation(a,b),true);
+ assert.equal(sameNews(a,b),true);assert.equal(sameNews(b,a),true);
+ assert.notEqual(commonEventRelation(a,{...b,title:'미래기업 캐나다 뷰티시장 매출 100억원 돌파'}),true);
+ assert.notEqual(commonEventRelation(a,{...b,title:'미래기업 일본 뷰티시장 공략',description:'일본 유통업체 새리테일과 브랜드 뉴코스의 판매망을 확대한다.'}),true);
+});

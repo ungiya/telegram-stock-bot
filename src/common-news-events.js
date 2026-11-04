@@ -45,9 +45,19 @@ export function commonEventRelation(a,b) {
  if(!Number.isFinite(ta)||!Number.isFinite(tb)||Math.abs(ta-tb)>3*DAY)return null;
  const at=norm(a.title),bt=norm(b.title);
  if(changed.test(at)||changed.test(bt))return null;
- const category=action(at);
- if(!category||category!==action(bt))return null;
  const aa=at+' '+norm(a.description),bb=bt+' '+norm(b.description);
+ const infer=(title,lead)=>{
+   const explicit=action(title);
+   if(explicit)return explicit;
+   // Search excerpts can end inside the retailer name, before '입점'.
+   // Strategy headlines still describe a distribution event when the lead
+   // identifies a store/retail chain. Later matching requires shared subjects.
+   if(/시장|공략|유통|판로|진출/.test(title) &&
+      /입점|유통\\s*(?:업체|채널|체인)|드럭스토어|매장|판매망/.test(lead))return 'entry';
+   return '';
+ };
+ const category=infer(at,norm(a.description).slice(0,350));
+ if(!category||category!==infer(bt,norm(b.description).slice(0,350)))return null;
  const fa=facts(aa),fb=facts(bb);
  if(category==='entry') {
    const retailer=s=>[...s.matchAll(/([가-힣a-z]{2,})\s*(?:\d+\s*개\s*)?(?:전\s*)?매장/g)]
@@ -68,6 +78,8 @@ export function commonEventRelation(a,b) {
  const shared=[...aWords].filter(w=>bWords.has(w));
  const cross=new Set([...aTitle].filter(w=>bWords.has(w)).concat([...bTitle].filter(w=>aWords.has(w))));
  const named=shared.filter(w=>/[a-z]/.test(w)||w.length>=3);
+ if(category==='entry' && shared.length>=3 && named.length>=2 && cross.size>=2 &&
+    similarity(aa,bb)>=0.28)return true;
  if(category==='gmv') {
    const ap=metric(aa,/(\d+(?:\.\d+)?)\s*%/g),bp=metric(bb,/(\d+(?:\.\d+)?)\s*%/g);
    if(fa.quarter.length&&fb.quarter.length&&ap.length&&bp.length&&
