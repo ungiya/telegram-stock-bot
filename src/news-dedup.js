@@ -1,3 +1,4 @@
+import { securityIncidentRelation } from './security-news-events.js';
 import { platformLaunchRelation } from './platform-launch-events.js';
 import { commonEventRelation } from './common-news-events.js';
 
@@ -211,6 +212,8 @@ export function sameNews(a, b) {
     ua.growth===ub.growth && Math.abs(ua.stamp-ub.stamp)<=7*86400000;
 
   if (a.ticker !== b.ticker) return false;
+  const security=securityIncidentRelation(a,b);
+  if(security !== null)return security;
   const platformLaunch=platformLaunchRelation(a,b);
   if(platformLaunch !== null)return platformLaunch;
   const common=commonEventRelation(a,b);
