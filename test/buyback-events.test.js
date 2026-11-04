@@ -19,3 +19,10 @@ test('different amounts, companies, dates and real follow-ups remain distinct',(
  assert.equal(sameNews(a,{...b,pub_ms:a.pub_ms+7*86400000}),false);
  assert.equal(coveredNewsEvent({...b,pub_ms:a.pub_ms+7*86400000}),null);
 });
+test('additional buyback is the same announcement when amount and share count match, for any company',()=>{
+ const first={...a,ticker:'새회사'};
+ const next={...first,title:'새회사, 자사주 3000억 추가 매입·소각…주주환원 9172억',description:'새회사는 보통주 165만1073주를 매입해 소각한다.'};
+ assert.equal(sameNews(first,next),true);
+ assert.equal(sameNews(first,{...next,description:'새회사는 보통주 200만주를 매입한다.'}),false);
+ assert.ok(coveredNewsEvent({...next,ticker:'크래프톤'}));
+});

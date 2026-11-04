@@ -1,14 +1,15 @@
+import { commonEventRelation } from './common-news-events.js';
 
 function medicubeCanadaEntry(item) {
   if(!['에이피알','APR','에이피알(APR)'].includes(item.ticker))return null;
   const title=String(item.title||'').normalize('NFKC').toLowerCase();
   const body=title+' '+String(item.description||'').normalize('NFKC').toLowerCase();
   if(!/메디큐브|medicube/.test(body)||!/캐나다|canada/.test(body)||
-     !/입점/.test(title)||!/샤퍼스|쇼퍼스|shoppers?\\s*drug\\s*mart|최대\\s*(?:규모\\s*)?드럭\\s*스토어/.test(body))return null;
-  if(/추가\\s*입점|입점\\s*(?:확대|성과|취소|철회)|매출|판매량|판매액|실적|정정/.test(title))return null;
+     !/입점/.test(title)||!/샤퍼스|쇼퍼스|shoppers?\s*drug\s*mart|최대\s*(?:규모\s*)?드럭\s*스토어/.test(body))return null;
+  if(/추가\s*입점|입점\s*(?:확대|성과|취소|철회)|매출|판매량|판매액|실적|정정/.test(title))return null;
   const time=Number(item.pub_ms??item.publishedAt);
   if(!Number.isFinite(time))return null;
-  const count=body.replace(/(?<=\\d),(?=\\d)/g,'').match(/(\\d+)\\s*개\\s*(?:전\\s*)?매장/);
+  const count=body.replace(/(?<=\d),(?=\d)/g,'').match(/(\d+)\s*개\s*(?:전\s*)?매장/);
   return {time,count:count?Number(count[1]):null};
 }
 
@@ -16,13 +17,13 @@ function usedQuarter(item) {
   if(item.ticker!=='무신사')return null;
   const title=String(item.title||'').normalize('NFKC');
   const body=title+' '+String(item.description||'').normalize('NFKC');
-  if(!/유즈드|musinsa\\s*used/i.test(body)||!/거래액/.test(title)||
+  if(!/유즈드|musinsa\s*used/i.test(body)||!/거래액/.test(title)||
     /정정|취소|전망|예상|목표/.test(title))return null;
-  const q=body.match(/([1-4])\\s*분기/);
-  const growth=body.match(/(\\d+(?:\\.\\d+)?)\\s*%/);
+  const q=body.match(/([1-4])\s*분기/);
+  const growth=body.match(/(\d+(?:\.\d+)?)\s*%/);
   const stamp=Number(item.pub_ms??item.publishedAt);
   if(!q||!growth||!Number.isFinite(stamp))return null;
-  const year=body.match(/(20\\d{2})\\s*년/)?.[1]||
+  const year=body.match(/(20\d{2})\s*년/)?.[1]||
     String(new Date(stamp+9*3600000).getUTCFullYear());
   return {quarter:q[1],growth:Number(growth[1]),year,stamp};
 }
@@ -209,6 +210,8 @@ export function sameNews(a, b) {
     ua.growth===ub.growth && Math.abs(ua.stamp-ub.stamp)<=7*86400000;
 
   if (a.ticker !== b.ticker) return false;
+  const common=commonEventRelation(a,b);
+  if(common !== null) return common;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
   if (!at || !bt) return false;
   const rdDay = rdDayRelation(a,b);

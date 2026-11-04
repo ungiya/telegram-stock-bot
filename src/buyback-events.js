@@ -3,7 +3,7 @@
 const norm = x => String(x || '').normalize('NFKC').replace(/(?<=\d),(?=\d)/g, '');
 const stock = /자사주|자기\s*주식/;
 const buying = /매입|취득|사들|사들이/;
-const followup = /취소|철회|정정|변경|완료|종료|결과|추가|재개|중단|처분|매각|신탁/;
+const followup = /취소|철회|정정|변경|완료|종료|결과|재개|중단|처분|매각|신탁/;
 function announcement(item) {
   const title = norm(item.title), body = norm(item.description);
   if (!stock.test(title) || !buying.test(title) || followup.test(title)) return null;
@@ -16,7 +16,7 @@ function announcement(item) {
       return !/주주\s*환원\s*$/.test(before) &&
         ((stock.test(before) && buying.test(before)) ||
          (stock.test(after) && buying.test(after)) ||
-         (stock.test(before) && /^(?:\s*(?:규모|상당|어치))?\s*(?:매입|취득|소각)/.test(after)));
+         (stock.test(before) && /^(?:\s*(?:규모|상당|어치))?\s*(?:추가\s*)?(?:매입|취득|소각)/.test(after)));
     });
     if (candidates.length !== 1) return null;
     const m=candidates[0];return Number(m[1])*(m[2]==='조'?10000:1);
@@ -24,7 +24,9 @@ function announcement(item) {
   const money=amount(title) ?? amount(body);
   const date=Number(item.pub_ms ?? item.publishedAt);
   if (money===null || !Number.isFinite(date)) return null;
-  return {money,date};
+  const shares=(title+' '+body).match(/(\d+(?:\.\d+)?)\s*만\s*(\d*)\s*주/);
+  const quantity=shares?Number(shares[1])*10000+Number(shares[2]||0):null;
+  return {money,date,quantity,additional:/추가/.test(title)};
 }
 export function buybackRelation(a,b) {
   if (a.ticker!==b.ticker) return null;
@@ -36,6 +38,8 @@ export function buybackRelation(a,b) {
     return null;
   }
   if (Math.abs(aa.date-bb.date)>3*86400000) return false;
+  if(aa.quantity&&bb.quantity&&Math.abs(aa.quantity-bb.quantity)>Math.max(100,aa.quantity*0.01))return false;
+  if(aa.additional!==bb.additional && !(aa.quantity&&bb.quantity))return false;
   return Math.abs(aa.money-bb.money)<=Math.max(0.1,aa.money*0.001);
 }
 // Screenshot confirms this specific announcement has already been delivered.
@@ -43,6 +47,7 @@ export function reportedKraftonBuyback(item) {
   if (item.ticker!=='크래프톤') return false;
   const a=announcement(item);
   return !!a && Math.abs(a.money-3000)<0.1 &&
+    (!a.additional || (a.quantity && Math.abs(a.quantity-1651073)<17000)) &&
     a.date>=Date.parse('2026-11-03T00:00:00+09:00') &&
     a.date<Date.parse('2026-11-07T00:00:00+09:00');
 }
