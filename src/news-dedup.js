@@ -1,3 +1,18 @@
+
+function usedQuarter(item) {
+  if(item.ticker!=='무신사')return null;
+  const title=String(item.title||'').normalize('NFKC');
+  const body=title+' '+String(item.description||'').normalize('NFKC');
+  if(!/유즈드|musinsa\\s*used/i.test(body)||!/거래액/.test(title)||
+    /정정|취소|전망|예상|목표/.test(title))return null;
+  const q=body.match(/([1-4])\\s*분기/);
+  const growth=body.match(/(\\d+(?:\\.\\d+)?)\\s*%/);
+  const stamp=Number(item.pub_ms??item.publishedAt);
+  if(!q||!growth||!Number.isFinite(stamp))return null;
+  const year=body.match(/(20\\d{2})\\s*년/)?.[1]||
+    String(new Date(stamp+9*3600000).getUTCFullYear());
+  return {quarter:q[1],growth:Number(growth[1]),year,stamp};
+}
 import { rdDayRelation, reportedDndRdDay } from './rd-day-events.js';
 import { buybackRelation, reportedKraftonBuyback } from './buyback-events.js';
 import { gstarProgramRelation, reportedKraftonGstarBriefing } from './expo-events.js';
@@ -172,6 +187,10 @@ function samePressRelease(a, b) {
 }
 
 export function sameNews(a, b) {
+  const ua=usedQuarter(a),ub=usedQuarter(b);
+  if(ua&&ub) return ua.year===ub.year && ua.quarter===ub.quarter &&
+    ua.growth===ub.growth && Math.abs(ua.stamp-ub.stamp)<=7*86400000;
+
   if (a.ticker !== b.ticker) return false;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
   if (!at || !bt) return false;
@@ -302,6 +321,12 @@ export function reportedKiffLaunch(item) {
 }
 
 export function coveredNewsEvent(item) {
+  const used=usedQuarter(item);
+  if(used && used.year==='2026' && used.quarter==='3' && used.growth===143 &&
+     used.stamp>=Date.parse('2026-11-04T00:00:00+09:00') &&
+     used.stamp<Date.parse('2026-11-11T00:00:00+09:00'))
+    return 'event:musinsa-used-2026-q3-gmv-143';
+
   if (reportedDndRdDay(item)) return 'event:dnd-pharmatech-rd-day-2026-11-03';
   if (reportedKraftonBuyback(item)) return 'event:krafton-buyback-3000-cancel-2026-11-03';
   if (reportedKraftonGstarBriefing(item)) return 'event:krafton-gstar-2026-program-briefing-2026-11-03';
