@@ -1,4 +1,15 @@
 import {exhibitionNeedsContext,exhibitionHasIdentity} from './expo-events.js';
+export function roundupNeedsContext(item) {
+ const title=String(item.title||'');
+ return /\[(?:산업|업계|기업|위클리)[^\]]*\]/i.test(title) ||
+   (Boolean(item.ticker)&&title.includes(item.ticker)&&new RegExp(item.ticker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[·ㆍ]\\s*[가-힣A-Za-z]{2,}').test(title));
+}
+export function companySection(context,ticker) {
+ if(!ticker)return '';
+ const parts=context.split(/[◆◇■●▶]/);
+ const section=parts.slice(1).find(p=>p.trim().startsWith(ticker));
+ return section?.trim()||'';
+}
 const LIMIT=512*1024;
 function plain(html) {
  return html.replace(/<(script|style|aside)\b[^>]*>[\s\S]*?<\/\1>/gi,' ')
@@ -40,7 +51,8 @@ async function readBounded(response) {
  return new TextDecoder('utf-8').decode(bytes);
 }
 export async function enrichNewsEvent(item,request=fetch) {
- if(!exhibitionNeedsContext(item))return {item,held:false};
+ const roundup=roundupNeedsContext(item);
+ if(!roundup&&!exhibitionNeedsContext(item))return {item,held:false};
  try {
   let url=new URL(item.url);
   if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error('invalid article URL');
@@ -55,6 +67,15 @@ export async function enrichNewsEvent(item,request=fetch) {
    }
    if(!response.ok||!/(?:text\/html|application\/xhtml)/i.test(response.headers.get('content-type')||''))throw Error('article unavailable');
    const context=articleContext(await readBounded(response));
+   if(roundup) {
+    const section=companySection(context,item.ticker);
+    if(!section)throw Error('company section unavailable');
+    // Compare only the monitored company's section; retain the original item
+    // for Telegram formatting in the caller.
+    const next=section.indexOf(item.ticker,item.ticker.length);
+    const title=section.slice(0,next>0?Math.min(next,180):180);
+    return {item:{...item,title,description:section},held:false};
+   }
    const match=context.match(/\b[a-z][a-z0-9-]*(?:xpo|expo|fair)\b|\b(?:CES|MWC)\b|빛가람\s*(?:국제\s*전력\s*기술\s*)?엑스포|빅스포|[가-힣]{2,25}(?:박람회|엑스포)/i);
    if(!match)throw Error('exhibition identity unavailable');
    // Put the identifying passage first for classifiers with bounded lead windows.
