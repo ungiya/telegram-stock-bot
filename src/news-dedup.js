@@ -1,3 +1,4 @@
+import { researchConferenceRelation } from './research-conference-events.js';
 import { technologyTransferRelation } from './technology-transfer-events.js';
 import { securityIncidentRelation } from './security-news-events.js';
 import { platformLaunchRelation } from './platform-launch-events.js';
@@ -213,6 +214,8 @@ export function sameNews(a, b) {
     ua.growth===ub.growth && Math.abs(ua.stamp-ub.stamp)<=7*86400000;
 
   if (a.ticker !== b.ticker) return false;
+  const researchConference=researchConferenceRelation(a,b);
+  if(researchConference !== null)return researchConference;
   const technologyTransfer=technologyTransferRelation(a,b);
   if(technologyTransfer !== null)return technologyTransfer;
   const security=securityIncidentRelation(a,b);
