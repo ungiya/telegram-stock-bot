@@ -32,3 +32,17 @@ test('same venue is not evidence for distinct transferred technologies',()=>{
  assert.equal(sameNews(a,b),false);
  assert.equal(sameNews({...a,title:a.title+' AB12'},{...a,title:a.title+' AB13'}),false);
 });
+
+test('late newspaper rewrites still match all seven earlier transfer stories',()=>{
+ const late=[
+ {title:'한전, LS일렉트릭에 AI 기반 전력설비 고장 예방 기술 이전',description:'매일일보 = 김현우 기자 | 한국전력이 자체 개발한 인공지능(AI) 기반 전력설비 고장 예방 기술을 LS일렉트릭에 이전한다. LS일렉트릭은 해당 기술을 자체 설비 상태 감시 시스템에 적용해 반도체 공장과 데이터센터...'},
+ {title:'고장 88건 막은 한전 기술…LS일렉트릭, 설비관리 사업 접목',description:'매일일보 = 이강민 기자 | 한전이 구축한 변전소 고장 예방 기술을 LS일렉트릭이 자체 관리 체계에 끌어온다. 반도체 생산시설과 데이터센터에서 설비 위험을 먼저 파악하고 관리하는 사업을 키우려는 구상이다.'}
+ ].map(x=>({...stories[0],...x,pub_ms:Date.parse('2026-11-05T17:22:00+09:00')}));
+ for(const a of late)for(const b of [...stories,...late]){assert.equal(sameNews(a,b),true,a.title+' / '+b.title);assert.equal(sameNews(b,a),true);}
+});
+test('indirect adoption wording works for future companies without a dated block',()=>{
+ const x={ticker:'미래기업',pub_ms:Date.parse('2031-03-02'),title:'미래기업, 새봄연구원 배터리 진단 기술 도입',description:'새봄연구원의 배터리 진단 기술을 미래기업이 자체 관리 체계에 끌어온다.'};
+ const y={...x,title:'미래기업, 설비 관리 체계 강화',description:'새봄연구원의 배터리 고장 예방 기술을 미래기업의 설비에 접목한다.'};
+ assert.equal(sameNews(x,y),true);assert.equal(sameNews(y,x),true);
+ assert.equal(sameNews(x,{...y,title:'미래기업, 배터리 진단 기술이전 계약 해지'}),false);
+});

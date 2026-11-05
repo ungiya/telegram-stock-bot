@@ -1,11 +1,12 @@
 // Match the transaction from either licensor's or licensee's viewpoint.
 const norm=v=>String(v||'').normalize('NFKC').toLowerCase()
  .replace(/한국\s*전력\s*공사|한국\s*전력|\b한전\b/g,'한전')
- .replace(/고장\s*예측|예방\s*진단/g,'진단');
+ .replace(/고장\s*(?:예측|예방)|예방\s*진단/g,'진단')
+ .replace(/(?:변전소|변전설비)\s*(?=진단)/g,'전력설비 ');
 const changed=/취소|철회|해지|정정|소송|재계약|추가\s*계약|계약\s*변경|기술료|로열티|매출|양산|상용화\s*(?:완료|성공)|도입\s*성과/;
 function profile(item) {
  const title=norm(item.title),body=title+' '+norm(item.description);
- if(!/기술(?:을|를)?\s*(?:이전|도입|확보)|(?:이전|도입|확보)\s*기술/.test(body))return null;
+ if(!/기술(?:을|를)?[^.!?…]{0,45}(?:이전|도입|확보|끌어온|접목|적용)|(?:이전|도입|확보)\s*기술/.test(body))return null;
  const clean=body.split(norm(item.ticker)).join(' ');
  // Named counterparties, not the company being monitored or exhibition venue.
  const partners=new Set((clean.match(/[가-힣a-z]+(?:공사|연구원|연구소|대학교|대학|전자|전기|테크|바이오|제약)|한전/g)||[]));
