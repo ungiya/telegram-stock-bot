@@ -1,3 +1,4 @@
+import { gameCollaborationRelation } from './game-collaboration-events.js';
 import { researchConferenceRelation } from './research-conference-events.js';
 import { technologyTransferRelation } from './technology-transfer-events.js';
 import { securityIncidentRelation } from './security-news-events.js';
@@ -214,6 +215,8 @@ export function sameNews(a, b) {
     ua.growth===ub.growth && Math.abs(ua.stamp-ub.stamp)<=7*86400000;
 
   if (a.ticker !== b.ticker) return false;
+  const gameCollaboration=gameCollaborationRelation(a,b);
+  if(gameCollaboration !== null)return gameCollaboration;
   const researchConference=researchConferenceRelation(a,b);
   if(researchConference !== null)return researchConference;
   const technologyTransfer=technologyTransferRelation(a,b);
