@@ -1,3 +1,4 @@
+import { sharedNewsKeywords } from './news-keywords.js';
 import { gameCollaborationRelation } from './game-collaboration-events.js';
 import { researchConferenceRelation } from './research-conference-events.js';
 import { technologyTransferRelation } from './technology-transfer-events.js';
@@ -257,6 +258,7 @@ export function sameNews(a, b) {
   // Incidental dates and unrelated endpoints in summaries do not identify a new event.
   // Material financial amounts and reporting-quarter changes still do.
   if (conflictingFacts(a.description, b.description, new Set(['amount', '분기']))) return false;
+  if (sharedNewsKeywords(a,b)) return true;
   if (at === bt) return true;
   const outlook = outlookRelation(a,b);
   if (outlook !== null) return outlook;
