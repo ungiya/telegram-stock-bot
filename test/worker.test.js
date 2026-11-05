@@ -325,3 +325,35 @@ test('The Public publisher is blocked on ingestion and existing send queue acros
     'https://www.thepublic.co.kr'
   ])assert.equal(blockedNewsSource(url),false,url);
 });
+
+
+
+test('WikiLeaks Korea publisher is globally blocked across Naver ingestion and pending send queues',async()=>{
+  const {queuedNewsExcluded}=await import('../src/worker.js');
+  const now=Date.parse('2026-11-05T18:14:00+09:00');
+  const domains=[
+    'https://wikileaks-kr.org/news/articleView.html?idxno=11111',
+    'https://www.wikileaks-kr.org/news/articleView.html?idxno=22222',
+    'http://m.wikileaks-kr.org/news/articleView.html?idxno=33333',
+    'https://WWW.WIKILEAKS-KR.ORG./news/articleView.html?idxno=44444'
+  ];
+  for(const url of domains){
+    assert.equal(blockedNewsSource(url),true,url);
+    for(const ticker of ['크래프톤','에이피알','씨어스','파마리서치','와디즈']){
+      const title=ticker+' 3분기 영업이익 100억원 발표';
+      assert.equal(normalizeArticle({
+        title,description:title,
+        originallink:url,
+        link:'https://n.news.naver.com/mnews/article/123/456',
+        pubDate:new Date(now).toUTCString()
+      },ticker,now),null,ticker+' ingestion '+url);
+      assert.equal(queuedNewsExcluded({ticker,title,description:title,url,pub_ms:now}),true,ticker+' queued '+url);
+    }
+  }
+  for(const url of [
+    'https://wikileaks-kr.org.example.com/article',
+    'https://notwikileaks-kr.org/article',
+    'https://safe.example.com/wikileaks-kr.org/123',
+    'https://wikileaks.org/article'
+  ])assert.equal(blockedNewsSource(url),false,'unrelated host '+url);
+});
