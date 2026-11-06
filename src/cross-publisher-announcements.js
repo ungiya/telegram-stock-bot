@@ -44,6 +44,26 @@ function versioned(value) {
     .map(m=>m[1].replace(/[^a-z가-힣]/g,'')+':'+m[2]+'.'+m[3])
     .filter(x=>!x.startsWith('분기:'));
 }
+
+// Do not merge two separate branded products just because their press releases
+// share a company's standard technology description.
+function brandedTitleTokens(value,ticker) {
+ const s=normalize(value).split(normalize(ticker)).join(' ');
+ const generic=new Set(['ai','ess','ipo','ir','rd','dc','it','iot','fda','api','gpu',
+ 'b2b','ceo','cgm','pc','new','global','world','news','tech','cloud','model',
+ 'platform','system','service','medical','health','korea','startup','software']);
+ return new Set((s.match(/\b[a-z][a-z0-9-]{2,}\b/g)||[])
+   .filter(word=>!generic.has(word) && word.length>=4));
+}
+function clearlyDifferentProducts(a,b) {
+ const x=brandedTitleTokens(a.title,a.ticker), y=brandedTitleTokens(b.title,b.ticker);
+ if(!x.size||!y.size||[...x].some(w=>y.has(w)))return false;
+ // The alternative publisher may lead with an old platform name but quote the
+ // new product's name in the summary. Only veto genuinely disjoint subjects.
+ const ad=normalize(a.description),bd=normalize(b.description);
+ return ![...x].some(w=>bd.includes(w)) && ![...y].some(w=>ad.includes(w));
+}
+
 function incompatibleVersions(a,b) {
   const av=versioned(a.title),bv=versioned(b.title);
   if(av.length && bv.length && !av.some(x=>bv.includes(x))) return true;
@@ -64,6 +84,7 @@ export function crossPublisherAnnouncementRelation(a,b) {
   // Avoid merging genuinely new events that quote a former launch in the body.
   if(changed.test(ta)||changed.test(tb))return null;
   if(incompatibleVersions(a,b))return false;
+  if(clearlyDifferentProducts(a,b))return false;
   const da=normalize(a.description).slice(0,520);
   const db=normalize(b.description).slice(0,520);
   // Both must actually describe the first introduction/development milestone.
@@ -73,9 +94,9 @@ export function crossPublisherAnnouncementRelation(a,b) {
      !(initial.test(tb)||initial.test(db)))return null;
   if(!subjectType.test(ta+' '+da)||!subjectType.test(tb+' '+db))return null;
   // Insufficient abstracts: protect against "same company + generic AI".
-  if(da.length<32||db.length<32)return null;
+  if(da.length<26||db.length<26)return null;
   const na=compact(ta+' '+da,a.ticker),nb=compact(tb+' '+db,b.ticker);
-  if(na.length<55||nb.length<55)return null;
+  if(na.length<33||nb.length<33)return null;
   if(!subjectEvidence(na,nb))return null;
   // A distinctive topic must be present in the TITLE of at least one item
   // and in the other item's press-release lead. Similar footers alone are not
@@ -90,7 +111,7 @@ export function crossPublisherAnnouncementRelation(a,b) {
     // Use shared *specific subject phrases*, not a fixed catalog of
     // company names or industries. A publisher may omit the model's brand
     // from its headline but describe the same technology in the excerpt.
-    const topics=/(모델|기술|솔루션|플랫폼|시스템|제품|프로젝트|의료|배터리|로봇|임상|진단|인증|전시|콘텐츠|서버|엔진|전력|신약|반도체|파운데이션|관리)/;
+    const topics=/(모델|솔루션|플랫폼|시스템|프로젝트|의료|배터리|로봇|임상|진단|인증|전시|콘텐츠|서버|엔진|전력|신약|반도체|파운데이션)/;
     const bland=/(사업을확대|시장에진출|기업이개발|기업이공개|관계자는|기술을통해|계획이라고|따라진행|공개했다고|발표했다고|사업을추진)/;
     const b9=shingles(bd,9);
     if(![...shingles(ad,9)].some(p=>b9.has(p)&&topics.test(p)&&!bland.test(p)) ||
