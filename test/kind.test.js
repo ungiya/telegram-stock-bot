@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
-import {parseKind,collectKind,runKindCheck,kindMessage,KIND_CRON} from '../src/kind.js';
+import {parseKind,collectKind,runKindCheck,kindMessage,KIND_CRON,DART_PRIORITY_WAIT_MS} from '../src/kind.js';
 import {handleCommand} from '../src/commands.js';
 const NOW=Date.parse('2026-11-02T01:00:00Z');
 const sourceTime = i => (Math.floor(NOW/300000)*5+i)*60000;
@@ -88,17 +88,19 @@ test('KIND does not repeat DART earnings even with another receipt; unrelated fi
  assert.match(f.replies[0].text,/신규 공급 계약/);
 });
 
-test('KIND preliminary earnings waits 90 seconds for DART and then sends as fallback only once',async t=>{
+test('KIND-only preliminary earnings waits the full DART priority window before fallback',async t=>{
  const f=fixture(t),report='연결재무제표기준영업(잠정)실적(공정공시)';
  await run(f,0,[]);
  const kind={...disclosure('20261102000030'),title:report};
- assert.equal((await run(f,0,[kind])).sent,0,'KIND briefly waits for DART');
+ assert.equal((await run(f,0,[kind])).sent,0,'KIND first waits for DART');
+ assert.equal((await runKindCheck(f.env,sourceTime(0),{now:NOW+120000,collector:async()=>[kind]})).sent,0);
+ assert.equal((await runKindCheck(f.env,sourceTime(0),{now:NOW+DART_PRIORITY_WAIT_MS-1,collector:async()=>[kind]})).sent,0);
  assert.equal(f.replies.length,0);
- const later=await runKindCheck(f.env,sourceTime(0),{now:NOW+120000,collector:async()=>[kind]});
- assert.equal(later.sent,1);
+ const later=await runKindCheck(f.env,sourceTime(0),{now:NOW+DART_PRIORITY_WAIT_MS+1000,collector:async()=>[kind]});
+ assert.equal(later.sent,1,'truly KIND-only filings still arrive after DART grace');
  assert.equal(f.replies.length,1);
  assert.match(f.replies[0].text,/KIND 공시/);
- assert.equal((await runKindCheck(f.env,sourceTime(0),{now:NOW+180000,collector:async()=>[kind]})).sent,0);
+ assert.equal((await runKindCheck(f.env,sourceTime(0),{now:NOW+DART_PRIORITY_WAIT_MS+60000,collector:async()=>[kind]})).sent,0);
  const claim=f.sql.prepare('SELECT * FROM disclosure_deliveries').get();
  assert.equal(claim.source,'kind');
  assert.ok(claim.delivered_ms>0);
