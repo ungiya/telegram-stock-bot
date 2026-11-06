@@ -692,3 +692,39 @@ test('all-company cross-publisher duplicates send one initial event only; materi
   assert.equal(next.sent,0,'repeat cron does not replay previously sent article');
   assert.equal(f.replies.length,2);
 });
+
+
+
+test('the three PUBG Steam #1 articles from screenshots do not resend from D1, but a new contract does',async t=>{
+ const f=fixture(t),now=Date.parse('2026-11-06T17:04:00+09:00');
+ t.mock.timers.enable({apis:['Date'],now});
+ const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+ const a=[
+  ['http://www.worktoday.co.kr/news/articleView.html?idxno=91596',
+   "[크래프톤] 크래프톤 '배틀그라운드', 스팀 글로벌·한국 매출 순위 1위",
+   'PUBG 배틀그라운드가 6일 기준 스팀 최고 인기 게임 글로벌 및 한국 매출 순위에서 1위를 차지했다.'],
+  ['https://www.econovill.com/news/articleView.html?idxno=756341',
+   '[크래프톤] 크래프톤 배틀그라운드 스팀 매출 1위 탈환',
+   'PUBG: BATTLEGROUNDS가 스팀 최고 인기 게임 글로벌과 한국 지역 매출 순위 1위를 기록했다.'],
+  ['https://www.dizzotv.com/site/data/html_dir/2026/11/06/2026110680181.html',
+   '[크래프톤] "9년 지나도 배그는 배그"…크래프톤, 스팀 글로벌 매출 1위',
+   'PUBG 배틀그라운드는 6일 스팀 최고 인기 게임 차트에서 전 세계와 한국 지역 모두 1위를 차지했다.']
+ ];
+ a.forEach(([url,title,description],n)=>insert.run(url,'크래프톤',title,description,now-5000+n*1000,now));
+ insert.run('https://new-business.example/krafton-20261106-contract','크래프톤',
+  '크래프톤 게임 IP 신규 공급 계약 체결',
+  '회사는 새 고객과 게임 지식재산권 공급 계약을 체결했다.',
+  now-1000,now);
+ const result=await runNewsCheck(f.env,now);
+ assert.equal(result.sent,1,'three syndications already received must yield no new Telegram messages');
+ assert.equal(f.replies.length,1);
+ assert.match(f.replies[0].text,/신규 공급 계약/);
+ const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='크래프톤' ORDER BY pub_ms").all();
+ assert.equal(rows.length,4);
+ for(const row of rows.slice(0,3)){
+  assert.equal(row.duplicate_of,'event:krafton-pubg-steam-sales-1st-2026-11-06');
+  assert.ok(row.sent_ms!==null);
+ }
+ assert.equal(rows[3].duplicate_of,null);
+ assert.ok(rows[3].sent_ms!==null);
+});
