@@ -656,3 +656,39 @@ test('Lunit Learning Unit 2.0 four publisher announcements are removed from D1 q
   assert.equal(rows[4].duplicate_of,null);
   assert.ok(rows.every(x=>x.sent_ms!==null));
 });
+
+
+
+test('all-company cross-publisher duplicates send one initial event only; material followups are still sent',async t=>{
+  const f=fixture(t),now=Date.parse('2026-11-06T14:00:00+09:00');
+  t.mock.timers.enable({apis:['Date'],now});
+  f.sql.prepare('INSERT INTO watchlist_overrides(ticker,aliases_json,enabled) VALUES(?,?,1)')
+    .run('테스트기업',JSON.stringify(['테스트기업']));
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  insert.run('https://first-press.example/smartfactory','테스트기업',
+    '테스트기업 스마트팩토리 플랫폼 ArgoFlow 공개',
+    '공장 설비를 통합 제어하는 스마트팩토리 플랫폼 ArgoFlow를 개발 완료해 선보였다.',
+    now-5000,now);
+  insert.run('https://second-press.example/factory','테스트기업',
+    '테스트기업 제조공장 설비 제어 플랫폼 개발 완료',
+    '공장 설비를 통합 제어하는 스마트팩토리 플랫폼 ArgoFlow를 공개했다.',
+    now-4000,now);
+  insert.run('https://third-press.example/contract','테스트기업',
+    '테스트기업 ArgoFlow 신규 공급 계약 체결',
+    '공장 설비를 통합 제어하는 스마트팩토리 플랫폼 ArgoFlow를 고객사에 납품한다.',
+    now-3000,now);
+  const first=await runNewsCheck(f.env,now);
+  assert.equal(first.sent,2,'one original release and one independent contract');
+  assert.equal(f.replies.length,2,'same release from two publishers is not sent twice');
+  assert.match(f.replies[0].text,/ArgoFlow 공개/);
+  assert.match(f.replies[1].text,/신규 공급 계약/);
+  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='테스트기업' ORDER BY pub_ms").all();
+  assert.equal(rows.length,3);
+  assert.equal(rows[0].duplicate_of,null);
+  assert.equal(rows[1].duplicate_of,rows[0].url);
+  assert.equal(rows[2].duplicate_of,null);
+  assert.ok(rows.every(x=>x.sent_ms!==null),'no duplicate left pending');
+  const next=await runNewsCheck(f.env,now+60000);
+  assert.equal(next.sent,0,'repeat cron does not replay previously sent article');
+  assert.equal(f.replies.length,2);
+});
