@@ -14,3 +14,12 @@ test('table rows keep units; unknown financial tables and amendments retain cont
  assert.ok(summarizeFiling('기타',('설명'.repeat(2000))).length<1000);
  assert.doesNotMatch(summarizeFiling('계약','계약상대\n계약금액(원)\n100'),/계약상대: 계약금액/);
 });
+
+
+test('damaged DART disclosure characters never masquerade as verified financial facts',()=>{
+  const damaged='주요 부분 · 원문 발췌\n�결�쓰�처�실�래\n2026-07-01\n2026-09-30';
+  const result=summarizeFiling('연결재무제표기준영업(잠정)실적(공정공시)',damaged);
+  assert.match(result,/인코딩이 손상/);
+  assert.doesNotMatch(result,/\uFFFD|2026-07-01/);
+  assert.equal(summarizeFiling('실적공시','매출액 | 500억\n영업이익 | 50억'), '주요 부분 · 원문 발췌\n매출액 | 500억\n영업이익 | 50억');
+});
