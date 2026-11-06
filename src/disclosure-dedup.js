@@ -26,6 +26,26 @@ export function earningsDisclosureKey({ticker,title,report_name,date,event_date,
  return 'earnings-prelim:'+encodeURIComponent(String(ticker).normalize('NFKC'))+':'+day+':'+scope;
 }
 
+// DART and KIND sometimes publish the same 5%-ownership filing with different
+// receipt IDs. The same company, filing day and report form (short/general)
+// identify the cross-feed notice. Corrections are separate filings and must
+// continue to alert. A separate company/date/type always remains distinct.
+export function ownershipDisclosureKey({ticker,title,report_name,date,event_date,filed_date}) {
+ if (!ticker) return null;
+ const headline=tidy(title ?? report_name);
+ const day=dateKey(date ?? event_date ?? filed_date);
+ if (!headline || !day || corrected.test(headline)) return null;
+ const compact=headline.replace(/[^가-힣a-z0-9]/g,'');
+ const match=compact.match(/^주식등의대량보유상황보고서(약식)?$/);
+ if (!match) return null;
+ const form=match[1]?'short':'standard';
+ return 'ownership-5pct:'+encodeURIComponent(String(ticker).normalize('NFKC'))+':'+day+':'+form;
+}
+
+export function sharedDisclosureKey(item) {
+ return earningsDisclosureKey(item) || ownershipDisclosureKey(item);
+}
+
 // An atomic key protects even when KIND and DART cron handlers overlap.
 // A failed notification releases its claim; an interrupted attempt can be
 // reclaimed after a bounded TTL (no permanent silence).
