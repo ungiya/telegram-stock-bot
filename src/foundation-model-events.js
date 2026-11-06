@@ -9,13 +9,15 @@ const DAY=86400000;
 const modelName=/(?:러닝\s*유닛|learning\s*unit|learningunit)\s*2\s*[.]?\s*0(?!\d)/i;
 const namedVersion=/(?:러닝\s*유닛|learning\s*unit|learningunit)\s*(\d+)\s*[.]?\s*(\d+)(?!\d)/ig;
 const medicalFoundation=/(?:의과학|의료)\s*특화.{0,28}(?:파운데이션|foundation)\s*모델|(?:파운데이션|foundation)\s*모델.{0,28}(?:의과학|의료)\s*특화/i;
-const newMilestone=/(?:임상\s*(?:[123]\s*상|결과|시험|성과)|환자\s*검증\s*결과|독립\s*검증|벤치마크\s*(?:결과|평가\s*결과|성적)|정확도\s*(?:\d|결과|수치|확정)|실증\s*(?:결과|완료|성공)|(?:추가|신규|별도)\s*(?:모델|제품|기능|버전|프로젝트|계약)|(?:공급|판매|수출|기술이전)\s*계약|계약\s*체결|정식\s*(?:출시|상용화)|(?:병원|기관|고객사)\s*(?:공급|도입|구축|계약)|(?:fda|식약처|ce)\s*(?:허가|승인)|(?:특허|논문)\s*(?:등록|게재|발표)|(?:매출|영업이익|분기\s*실적|투자유치|유상증자|인수합병|취소|철회|중단|정정|소송))/i;
+const newMilestone=/(?:임상\s*(?:[123]\s*상|결과|시험|성과)|환자\s*검증\s*결과|독립\s*검증|벤치마크\s*(?:결과|평가\s*결과|성적)|정확도\s*(?:\d|결과|수치|확정)|(?:독립\s*실증\s*(?:결과|완료|성공)|(?:추가|신규|별도)\s*실증\s*(?:결과|완료|성공)|실증\s*(?:결과|성공))|(?:추가|신규|별도)\s*(?:모델|제품|기능|버전|프로젝트|계약)|(?:공급|판매|수출|기술이전)\s*계약|계약\s*체결|정식\s*(?:출시|상용화)|(?:병원|기관|고객사)\s*(?:공급|도입|구축|계약)|(?:fda|식약처|ce)\s*(?:허가|승인)|(?:특허|논문)\s*(?:등록|게재|발표)|(?:매출|영업이익|분기\s*실적|투자유치|유상증자|인수합병|취소|철회|중단|정정|소송))/i;
 const announcement=/(?:공개|개발\s*완료|개발했다|완성|완수|선보|발표|구축|개발\s*성공|의료\s*현장.{0,16}실증|모델\s*개발)/i;
 const officialProject=/(?:정부|국가\s*전략|과학기술정보통신부|과기정통부|컨소시엄|의과학\s*특화|프로젝트)/i;
 
 const deliveredUrls=[
  ['daily.hankooki.com',/^\/news\/articleView\.html$/,'idxno','1422512'],
- ['etoday.co.kr',/^\/news\/view\/2644883$/]
+ ['etoday.co.kr',/^\/news\/view\/2644883$/],
+ ['wedaily.com',/^\/news\/articleView\.html$/,'idxno','303039'],
+ ['news1.kr',/^\/bio\/healthcare\/6345418$/]
 ];
 
 function exactDeliveredUrl(value) {
@@ -44,10 +46,12 @@ export function reportedLunitLearningUnit20(item) {
  }
  const hasName=modelName.test(body);
  const hasProject=medicalFoundation.test(body) &&
-   officialProject.test(body) && /모델|파운데이션/.test(title);
+   officialProject.test(body) &&
+   (/모델|파운데이션/.test(title) || /원내\s*서버|원무|진료\s*보조|오픈\s*소스|병원\s*현장/.test(title));
  if(!hasName && !hasProject)return false;
  if(!announcement.test(title) &&
-    !(hasName&&/(의료|인공지능|\bai\b|파운데이션|모델)/i.test(title)))return false;
+    !(hasName&&/(의료|인공지능|\bai\b|파운데이션|모델)/i.test(title)) &&
+    !(hasProject && /원내\s*서버|원무|진료\s*보조|오픈\s*소스/.test(title) && announcement.test(body)))return false;
  // First coverage may describe proposed clinical piloting, not completed
  // clinical trial results. Only the above substantive outcome terms are new.
  return true;
