@@ -1,6 +1,7 @@
 import { SUMMARY_MARKER } from './dart-summary.js';
 import { fetchFilingBody, filingMessages } from './dart-body.js';
 import { liveWatchlist, telegram } from './commands.js';
+import { earningsDisclosureKey, claimDisclosure, finishDisclosure, releaseDisclosure } from './disclosure-dedup.js';
 
 // Separate invocation from news; bounded to eight API pages and five sends per tick.
 export const DART_CRON = '0-59 * * * *';
@@ -165,6 +166,34 @@ export async function runDartCheck(env, now = Date.now()) {
         const runtime = await env.DB.prepare('SELECT paused FROM bot_runtime WHERE id = 1').first();
         if (runtime.paused) break;
         if (!(await liveWatchlist(env)).has(item.ticker)) continue;
+        const eventKey=earningsDisclosureKey({
+          ticker:item.ticker,title:item.report_name,date:item.filed_date
+        });
+        let claim=null;
+        if(eventKey){
+          // A legacy KIND alert may have been delivered before the shared
+          // event table existed, including with a different receipt number.
+          const kindRows=(await env.DB.prepare(
+            'SELECT body,event_date FROM kind_items WHERE ticker=? AND event_date=? AND sent_ms IS NOT NULL'
+          ).bind(item.ticker,item.filed_date.replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3')).all()).results||[];
+          const priorKind=kindRows.some(row=>{
+            const title=row.body.split('\n')[0].replace(/^\[KIND 공시\]\s*\[[^\]]+\]\s*/,'');
+            return earningsDisclosureKey({ticker:item.ticker,title,date:row.event_date})===eventKey;
+          });
+          if(priorKind){
+            await env.DB.prepare('UPDATE dart_filings SET sent_ms=? WHERE receipt_no=?')
+              .bind(now,item.receipt_no).run();
+            continue;
+          }
+          claim=await claimDisclosure(env,eventKey,'dart',item.receipt_no,now);
+          if(claim.status==='duplicate'){
+            await env.DB.prepare('UPDATE dart_filings SET sent_ms=? WHERE receipt_no=?')
+              .bind(now,item.receipt_no).run();
+            continue;
+          }
+          if(claim.status==='busy')continue;
+        }
+        try {
         let delivery = await env.DB.prepare('SELECT * FROM dart_body_delivery WHERE receipt_no=?').bind(item.receipt_no).first();
         if (!delivery) {
           let body = '';
@@ -203,8 +232,13 @@ export async function runDartCheck(env, now = Date.now()) {
           await env.DB.prepare('UPDATE dart_body_delivery SET next_part=? WHERE receipt_no=?').bind(part,item.receipt_no).run();
         }
         if (part < messages.length) break;
+        await finishDisclosure(env,claim,now);
         await env.DB.prepare('UPDATE dart_filings SET sent_ms = ? WHERE receipt_no = ?').bind(now, item.receipt_no).run();
         sent++;
+        } catch(error) {
+          await releaseDisclosure(env,claim);
+          throw error;
+        }
         if (messageCount >= 6) break;
       }
     }
