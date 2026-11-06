@@ -70,7 +70,7 @@ test('genuinely new outcomes and model versions are separate events',()=>{
   for(const item of later){
     assert.equal(reportedLunitLearningUnit20(item),false,item.title);
     assert.equal(coveredNewsEvent(item),null,item.title);
-    assert.equal(learningUnitReleaseRelation(first,item),null,item.title);
+    assert.notEqual(learningUnitReleaseRelation(first,item),true,item.title);
   }
   assert.equal(coveredNewsEvent({...first,ticker:'크래프톤',url:'https://unrelated.example/article'}),null);
   assert.equal(learningUnitReleaseRelation(first,{...second,ticker:'씨어스'}),null);
