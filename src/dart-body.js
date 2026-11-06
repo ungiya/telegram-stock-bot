@@ -13,12 +13,27 @@ export async function boundedBytes(stream, limit = MAX_BYTES) {
   const out=new Uint8Array(size); let offset=0;
   for(const chunk of chunks){out.set(chunk,offset);offset+=chunk.length;} return out;
 }
-function decode(bytes) {
-  const header=new TextDecoder().decode(bytes.slice(0,500));
-  const encoding=/encoding\s*=\s*["']([^"']+)|charset\s*=\s*["']?([^\s"'>;]+)/i.exec(header);
-  const label=encoding?.[1] || encoding?.[2] || 'utf-8';
-  return new TextDecoder(/euc-kr|ks_c_5601|cp949/i.test(label)?'euc-kr':'utf-8').decode(bytes);
+export function decodeFilingBytes(bytes) {
+  // The DART viewer sometimes sends CP949/EUC-KR without charset metadata,
+  // or the META tag appears after the first 500 bytes. UTF-8 decoding then
+  // produces U+FFFD and corrupted table headings in the Telegram summary.
+  const preview=new TextDecoder('latin1').decode(bytes.slice(0,8192));
+  const xml=preview.match(/<\?xml\b[^>]*\bencoding\s*=\s*["']([^"']+)/i);
+  const html=preview.match(/<meta\b[^>]*\bcharset\s*=\s*["']?\s*([a-z0-9_-]+)/i);
+  const declared=(xml?.[1]||html?.[1]||'').toLowerCase();
+  const utf8=new TextDecoder('utf-8').decode(bytes);
+  const korean=/euc-kr|ks_c_5601|cp949|ks_c_5601-1987|x-windows-949/.test(declared);
+  if(korean) return new TextDecoder('euc-kr').decode(bytes);
+  const badUtf8=(utf8.match(/\uFFFD/g)||[]).length;
+  if(badUtf8 < 2) return utf8;
+  const legacy=new TextDecoder('euc-kr').decode(bytes);
+  const badLegacy=(legacy.match(/\uFFFD/g)||[]).length;
+  const hangulLegacy=(legacy.match(/[가-힣]/g)||[]).length;
+  // Only choose the fallback when it demonstrably repairs broken Korean text.
+  if(badLegacy < badUtf8 && hangulLegacy >= 2) return legacy;
+  return utf8;
 }
+
 export function filingText(markup) {
   let s=String(markup).replace(/<!--[\s\S]*?-->/g,'')
     .replace(/<(script|style|head|DOCUMENT-HEADER)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,'');
@@ -54,7 +69,7 @@ export async function unzipFiling(bytes, receipt) {
   const compressed=bytes.slice(start,start+e.size);
   const raw=e.method===0?compressed:e.method===8?await boundedBytes(new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'))):null;
   if(!raw||raw.length!==e.raw)throw Error('invalid document size');
-  return decode(raw);
+  return decodeFilingBytes(raw);
 }
 async function get(url,signal){
   const r=await fetch(url.toString(),{method:'GET',redirect:'manual',signal,headers:{Accept:'*/*','User-Agent':'telegram-stock-news-alert/1.0 (OpenDART client)'}});
@@ -79,8 +94,8 @@ export async function fetchFilingBody(env,receipt){
     if(body.length<30)throw Error('empty document');
     return body;
   }catch{/* Exchange filings or API failures can still have a public HTML body. */}
-  const main=decode(await get(new URL('https://dart.fss.or.kr/dsaf001/main.do?rcpNo='+receipt),signal));
-  const html=decode(await get(viewerUrl(main,receipt),signal));
+  const main=decodeFilingBytes(await get(new URL('https://dart.fss.or.kr/dsaf001/main.do?rcpNo='+receipt),signal));
+  const html=decodeFilingBytes(await get(viewerUrl(main,receipt),signal));
   if(!/<(?:table|p)\b/i.test(html)||/접근이 제한|서비스 이용에 불편|비정상적인 접근/.test(html))throw Error('invalid filing body');
   const body=filingText(html);if(body.length<30)throw Error('empty document');return body;
 }
