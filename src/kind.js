@@ -1,6 +1,6 @@
 import { liveWatchlist, telegram } from './commands.js';
 import { matchDartCompany, kstDate } from './dart.js';
-import { earningsDisclosureKey, claimDisclosure, finishDisclosure, releaseDisclosure } from './disclosure-dedup.js';
+import { sharedDisclosureKey, claimDisclosure, finishDisclosure, releaseDisclosure } from './disclosure-dedup.js';
 
 export const KIND_CRON = '*/1 * * * *';
 const ORIGIN = 'https://kind.krx.co.kr';
@@ -131,9 +131,9 @@ export async function runKindCheck(env, scheduledAt = Date.now(), options = {}) 
         await env.DB.prepare('UPDATE kind_items SET sent_ms=? WHERE event_key=?').bind(now,item.event_key).run(); continue;
       }
       // Prefer DART's readable original filing if it is about to arrive.
-      // Ordinary contracts, IPO status and non-earnings disclosures have no delay.
+      // Ordinary contracts, IPO status and other non-shared disclosures have no delay.
       const title = item.body.split('\n')[0].replace(/^\[KIND 공시\]\s*\[[^\]]+\]\s*/,'');
-      const eventKey = item.ticker && earningsDisclosureKey({
+      const eventKey = item.ticker && sharedDisclosureKey({
         ticker:item.ticker,title,date:item.event_date
       });
       const dart = item.receipt && await env.DB.prepare(
@@ -146,7 +146,7 @@ export async function runKindCheck(env, scheduledAt = Date.now(), options = {}) 
         const prior = (await env.DB.prepare(
           'SELECT report_name,filed_date FROM dart_filings WHERE ticker=? AND filed_date=? AND sent_ms IS NOT NULL'
         ).bind(item.ticker,item.event_date.replace(/-/g,'')).all()).results || [];
-        alreadySent=prior.some(row=>earningsDisclosureKey({
+        alreadySent=prior.some(row=>sharedDisclosureKey({
           ticker:item.ticker,title:row.report_name,date:row.filed_date
         })===eventKey);
       }
