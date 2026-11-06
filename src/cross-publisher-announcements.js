@@ -87,10 +87,13 @@ export function crossPublisherAnnouncementRelation(a,b) {
     // enough when the headlines describe the same type of initial release.
     const ad=compact(da,a.ticker),bd=compact(db,b.ticker);
     if(!subjectEvidence(ad,bd))return null;
-    // Require at least one non-generic model/project/technology theme in both.
-    const themes=['파운데이션모델','의료특화','생성형ai','연속혈당','모니터링솔루션',
-      '에너지저장','전력관리시스템','머신러닝모델','배터리관리','산업용ai'];
-    if(!themes.some(t=>ad.includes(t)&&bd.includes(t)) ||
+    // Use shared *specific subject phrases*, not a fixed catalog of
+    // company names or industries. A publisher may omit the model's brand
+    // from its headline but describe the same technology in the excerpt.
+    const topics=/(모델|기술|솔루션|플랫폼|시스템|제품|프로젝트|의료|배터리|로봇|임상|진단|인증|전시|콘텐츠|서버|엔진|전력|신약|반도체|파운데이션|관리)/;
+    const bland=/(사업을확대|시장에진출|기업이개발|기업이공개|관계자는|기술을통해|계획이라고|따라진행|공개했다고|발표했다고|사업을추진)/;
+    const b9=shingles(bd,9);
+    if(![...shingles(ad,9)].some(p=>b9.has(p)&&topics.test(p)&&!bland.test(p)) ||
        vague.test(atitle)||vague.test(btitle))return null;
   }
   return true;
