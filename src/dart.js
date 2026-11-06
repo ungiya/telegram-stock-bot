@@ -1,7 +1,7 @@
 import { SUMMARY_MARKER } from './dart-summary.js';
 import { fetchFilingBody, filingMessages } from './dart-body.js';
 import { liveWatchlist, telegram } from './commands.js';
-import { earningsDisclosureKey, claimDisclosure, finishDisclosure, releaseDisclosure } from './disclosure-dedup.js';
+import { sharedDisclosureKey, claimDisclosure, finishDisclosure, releaseDisclosure } from './disclosure-dedup.js';
 
 // Separate invocation from news; bounded to eight API pages and five sends per tick.
 export const DART_CRON = '0-59 * * * *';
@@ -166,7 +166,7 @@ export async function runDartCheck(env, now = Date.now()) {
         const runtime = await env.DB.prepare('SELECT paused FROM bot_runtime WHERE id = 1').first();
         if (runtime.paused) break;
         if (!(await liveWatchlist(env)).has(item.ticker)) continue;
-        const eventKey=earningsDisclosureKey({
+        const eventKey=sharedDisclosureKey({
           ticker:item.ticker,title:item.report_name,date:item.filed_date
         });
         let claim=null;
@@ -178,7 +178,7 @@ export async function runDartCheck(env, now = Date.now()) {
           ).bind(item.ticker,item.filed_date.replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3')).all()).results||[];
           const priorKind=kindRows.some(row=>{
             const title=row.body.split('\n')[0].replace(/^\[KIND 공시\]\s*\[[^\]]+\]\s*/,'');
-            return earningsDisclosureKey({ticker:item.ticker,title,date:row.event_date})===eventKey;
+            return sharedDisclosureKey({ticker:item.ticker,title,date:row.event_date})===eventKey;
           });
           if(priorKind){
             await env.DB.prepare('UPDATE dart_filings SET sent_ms=? WHERE receipt_no=?')
