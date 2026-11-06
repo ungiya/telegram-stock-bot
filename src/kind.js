@@ -1,5 +1,6 @@
 import { liveWatchlist, telegram } from './commands.js';
 import { matchDartCompany, kstDate } from './dart.js';
+import { earningsDisclosureKey, claimDisclosure, finishDisclosure, releaseDisclosure } from './disclosure-dedup.js';
 
 export const KIND_CRON = '*/1 * * * *';
 const ORIGIN = 'https://kind.krx.co.kr';
@@ -129,12 +130,43 @@ export async function runKindCheck(env, scheduledAt = Date.now(), options = {}) 
       if (item.ticker && !(await liveWatchlist(env)).has(item.ticker)) {
         await env.DB.prepare('UPDATE kind_items SET sent_ms=? WHERE event_key=?').bind(now,item.event_key).run(); continue;
       }
-      // Only identical receipt numbers are safe to match; do not merge different
-      // filings merely because their company/title/date happen to be identical.
-      const dart = item.receipt && await env.DB.prepare('SELECT sent_ms FROM dart_filings WHERE receipt_no=?').bind(item.receipt).first();
-      if (!dart?.sent_ms) {
-        if (sent) await new Promise(r=>setTimeout(r,1100));
-        await telegram(env,'sendMessage',{chat_id:env.TELEGRAM_CHAT_ID,text:item.body,link_preview_options:{is_disabled:false}}); sent++;
+      // Prefer DART's readable original filing if it is about to arrive.
+      // Ordinary contracts, IPO status and non-earnings disclosures have no delay.
+      const title = item.body.split('\n')[0].replace(/^\[KIND 공시\]\s*\[[^\]]+\]\s*/,'');
+      const eventKey = item.ticker && earningsDisclosureKey({
+        ticker:item.ticker,title,date:item.event_date
+      });
+      const dart = item.receipt && await env.DB.prepare(
+        'SELECT sent_ms FROM dart_filings WHERE receipt_no=?'
+      ).bind(item.receipt).first();
+      if (!dart?.sent_ms && eventKey && now-item.created_ms < 90_000) continue;
+      // Handle pre-migration DART deliveries even if KIND and DART used
+      // different receipt numbers for the same preliminary earnings report.
+      let alreadySent = Boolean(dart?.sent_ms);
+      if (!alreadySent && eventKey) {
+        const prior = (await env.DB.prepare(
+          'SELECT report_name,filed_date FROM dart_filings WHERE ticker=? AND filed_date=? AND sent_ms IS NOT NULL'
+        ).bind(item.ticker,item.event_date.replace(/-/g,'')).all()).results || [];
+        alreadySent=prior.some(row=>earningsDisclosureKey({
+          ticker:item.ticker,title:row.report_name,date:row.filed_date
+        })===eventKey);
+      }
+      let claim=null;
+      if (!alreadySent && eventKey) {
+        claim=await claimDisclosure(env,eventKey,'kind',item.event_key,now);
+        if (claim.status==='busy') continue;
+        if (claim.status==='duplicate') alreadySent=true;
+      }
+      if (!alreadySent) {
+        try {
+          if (sent) await new Promise(r=>setTimeout(r,1100));
+          await telegram(env,'sendMessage',{chat_id:env.TELEGRAM_CHAT_ID,text:item.body,link_preview_options:{is_disabled:false}});
+          await finishDisclosure(env,claim,now);
+          sent++;
+        } catch(error) {
+          await releaseDisclosure(env,claim);
+          throw error;
+        }
       }
       await env.DB.prepare('UPDATE kind_items SET sent_ms=? WHERE event_key=?').bind(now,item.event_key).run();
     }
