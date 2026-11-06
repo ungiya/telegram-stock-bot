@@ -31,12 +31,22 @@ export function earningsDisclosureKey({ticker,title,report_name,date,event_date,
 // reclaimed after a bounded TTL (no permanent silence).
 export async function claimDisclosure(env,key,source,receipt,now) {
  if(!key)return {status:'not_applicable'};
- const row=await env.DB.prepare(
-  'INSERT INTO disclosure_deliveries(event_key,source,receipt,claimed_ms,delivered_ms) VALUES(?,?,?,?,NULL) '+
-  'ON CONFLICT(event_key) DO UPDATE SET source=excluded.source,receipt=excluded.receipt,claimed_ms=excluded.claimed_ms '+
-  'WHERE disclosure_deliveries.delivered_ms IS NULL AND disclosure_deliveries.claimed_ms < ? '+
-  'RETURNING event_key'
- ).bind(key,source,receipt,now,now-3*60000).first();
+ let row;
+ try {
+  row=await env.DB.prepare(
+   'INSERT INTO disclosure_deliveries(event_key,source,receipt,claimed_ms,delivered_ms) VALUES(?,?,?,?,NULL) '+
+   'ON CONFLICT(event_key) DO UPDATE SET source=excluded.source,receipt=excluded.receipt,claimed_ms=excluded.claimed_ms '+
+   'WHERE disclosure_deliveries.delivered_ms IS NULL AND disclosure_deliveries.claimed_ms < ? '+
+   'RETURNING event_key'
+  ).bind(key,source,receipt,now,now-3*60000).first();
+ } catch(error) {
+  // Some Cloudflare builds deploy code before D1 migrations. Do not stop
+  // KIND/DART entirely in that window. Legacy same-receipt suppression
+  // remains active; cross-source protection needs migration 0012.
+  if(/no such table:\s*disclosure_deliveries/i.test(String(error.message)))
+   return {status:'not_applicable',reason:'migration_pending'};
+  throw error;
+ }
  if(row)return {status:'claimed',key,source,receipt};
  const previous=await env.DB.prepare('SELECT delivered_ms FROM disclosure_deliveries WHERE event_key=?')
   .bind(key).first();
