@@ -404,3 +404,27 @@ test('KIND waits for any pending DART receipt, including non-shared reports',asy
  assert.equal((await runKindCheck(f.env,slot,{now:now+DART_PRIORITY_WAIT_MS+60000,collector:async()=>[kind]})).sent,0);
  assert.equal(f.replies.length,0);
 });
+
+
+
+test('ordinary supply-contract disclosure: KIND first, DART later with different receipt, only DART alerts',async t=>{
+ const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
+ const report='단일판매ㆍ공급계약체결';
+ const kind={id:'20261106000881',company:'효성중공업',title:report,eventDate:'2026-11-06',
+   url:'https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261106000881'};
+ await runKindCheck(f.env,slot,{now,collector:async()=>[]});
+ f.setPages([[filing('20261106000001')]]); await runDartCheck(f.env,now);
+ assert.equal((await runKindCheck(f.env,slot,{now:now+60000,collector:async()=>[kind]})).sent,0);
+ f.setPages([[
+  {corp_name:'효성중공업',rcept_no:'20261106000391',rcept_dt:'20261106',report_nm:report}
+ ]]);
+ assert.equal((await runDartCheck(f.env,now+120000)).sent,1);
+ assert.equal(f.replies.length,1);
+ assert.match(f.replies[0].text,/^\[공시\] \[효성중공업\]/);
+ assert.match(f.replies[0].text,/dart\.fss\.or\.kr/);
+ assert.equal((await runKindCheck(f.env,slot,{
+  now:now+DART_PRIORITY_WAIT_MS+120000,collector:async()=>[kind]
+ })).sent,0);
+ assert.equal(f.replies.length,1);
+ assert.equal(f.sql.prepare('SELECT source FROM disclosure_deliveries').get().source,'dart');
+});
