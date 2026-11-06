@@ -160,7 +160,7 @@ export async function runKindCheck(env, scheduledAt = Date.now(), options = {}) 
       }
       // If DART has this disclosure, KIND never sends its copy. While DART
       // is pending, let it retry rather than racing it with a KIND fallback.
-      if (!alreadySent && eventKey && matchingDartExists) continue;
+      if (!alreadySent && matchingDartExists) continue;
       // If only KIND has appeared, give DART a fair opportunity to arrive.
       // Without a matching DART record, a genuine KIND-only disclosure can
       // still reach the user after this bounded grace period.
