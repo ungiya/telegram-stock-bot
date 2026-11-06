@@ -1,3 +1,4 @@
+import { crossPublisherAnnouncementRelation } from './cross-publisher-announcements.js';
 import { reportedLunitLearningUnit20, learningUnitReleaseRelation } from './foundation-model-events.js';
 import { sharedNewsKeywords } from './news-keywords.js';
 import { gameCollaborationRelation } from './game-collaboration-events.js';
@@ -229,6 +230,8 @@ export function sameNews(a, b) {
   if(platformLaunch !== null)return platformLaunch;
   const foundation=learningUnitReleaseRelation(a,b);
   if(foundation !== null)return foundation;
+  const crossPublisher=crossPublisherAnnouncementRelation(a,b);
+  if(crossPublisher !== null)return crossPublisher;
   const common=commonEventRelation(a,b);
   if(common !== null) return common;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
