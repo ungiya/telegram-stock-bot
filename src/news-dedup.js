@@ -1,3 +1,4 @@
+import { reportedLunitLearningUnit20, learningUnitReleaseRelation } from './foundation-model-events.js';
 import { sharedNewsKeywords } from './news-keywords.js';
 import { gameCollaborationRelation } from './game-collaboration-events.js';
 import { researchConferenceRelation } from './research-conference-events.js';
@@ -226,6 +227,8 @@ export function sameNews(a, b) {
   if(security !== null)return security;
   const platformLaunch=platformLaunchRelation(a,b);
   if(platformLaunch !== null)return platformLaunch;
+  const foundation=learningUnitReleaseRelation(a,b);
+  if(foundation !== null)return foundation;
   const common=commonEventRelation(a,b);
   if(common !== null) return common;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
@@ -358,6 +361,7 @@ export function reportedKiffLaunch(item) {
 }
 
 export function coveredNewsEvent(item) {
+  if(reportedLunitLearningUnit20(item))return 'event:lunit-learningunit20-foundation-model-launch-2026-11-06';
   const canada=medicubeCanadaEntry(item);
   if(canada && (!canada.count||canada.count===1300) &&
      canada.time>=Date.parse('2026-11-04T00:00:00+09:00') &&
