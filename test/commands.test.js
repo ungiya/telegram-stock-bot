@@ -617,7 +617,7 @@ test('future-proof multi-company digests from several publishers never generate 
 
 
 
-test('Lunit Learning Unit 2.0 two publisher announcements are removed from D1 queue; real new agreement still sends',async t=>{
+test('Lunit Learning Unit 2.0 four publisher announcements are removed from D1 queue; real new agreement still sends',async t=>{
   const f=fixture(t),now=Date.parse('2026-11-06T10:17:00+09:00');
   t.mock.timers.enable({apis:['Date'],now});
   f.sql.prepare('INSERT INTO watchlist_overrides(ticker,aliases_json,enabled) VALUES(?,?,1)')
@@ -631,6 +631,14 @@ test('Lunit Learning Unit 2.0 two publisher announcements are removed from D1 qu
     '[루닛] 루닛, 의료 특화 AI 모델 개발 완료…진료·병원행정 등 의료 현장서 실증',
     "정부의 국가 전략사업인 '의과학 특화 파운데이션 모델' 프로젝트를 완수했다고 밝혔다.",
     now-7000,now);
+  insert.run('https://www.wedaily.com/news/articleView.html?idxno=303039','루닛',
+    "[루닛] '원내 서버서 진료 보조부터 원무까지'…루닛, 오픈소스 의료 AI '러닝유...",
+    "루닛이 병원 내부 전산망에서 진료 및 행정 전반을 지원하는 의료 특화 파운데이션 모델을 선보였다. 과기정통부 의과학 특화 프로젝트.",
+    now-6500,now);
+  insert.run('https://www.news1.kr/bio/healthcare/6345418','루닛',
+    "[루닛] 루닛, 의료 특화 AI '러닝유닛 2.0' 공개…병원 현장 실증 완료",
+    "의료 인공지능 기업 루닛이 의료기관의 진료와 행정 업무를 지원하는 의료 특화 파운데이션 모델을 공개했다.",
+    now-6200,now);
   insert.run('https://new-business.example/lunit-hospital-contract','루닛',
     '루닛 새 의료 AI 모델 대학병원 공급 계약 체결',
     "루닛이 병원과 새 공급 계약을 체결했다고 발표했다.",
@@ -640,9 +648,11 @@ test('Lunit Learning Unit 2.0 two publisher announcements are removed from D1 qu
   assert.equal(f.replies.length,1);
   assert.match(f.replies[0].text,/공급 계약/);
   const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='루닛' ORDER BY pub_ms").all();
-  assert.equal(rows.length,3);
+  assert.equal(rows.length,5);
   assert.equal(rows[0].duplicate_of,'event:lunit-learningunit20-foundation-model-launch-2026-11-06');
   assert.equal(rows[1].duplicate_of,'event:lunit-learningunit20-foundation-model-launch-2026-11-06');
-  assert.equal(rows[2].duplicate_of,null);
+  assert.equal(rows[2].duplicate_of,'event:lunit-learningunit20-foundation-model-launch-2026-11-06');
+  assert.equal(rows[3].duplicate_of,'event:lunit-learningunit20-foundation-model-launch-2026-11-06');
+  assert.equal(rows[4].duplicate_of,null);
   assert.ok(rows.every(x=>x.sent_ms!==null));
 });
