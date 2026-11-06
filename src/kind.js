@@ -7,6 +7,9 @@ const ORIGIN = 'https://kind.krx.co.kr';
 const IPO = '/listinvstg/listinvstgcom.do';
 const DISC = '/disclosure/todaydisclosure.do';
 const statuses = { '01': '청구서접수', '02': '심사승인', '04': '심사철회' };
+// Prefer DART's detailed official filing over a matching KIND headline.
+// KIND-only disclosures remain available after a bounded fallback window.
+export const DART_PRIORITY_WAIT_MS = 30 * 60_000;
 const clean = value => String(value || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ')
   .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
 const date = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -139,20 +142,29 @@ export async function runKindCheck(env, scheduledAt = Date.now(), options = {}) 
       const dart = item.receipt && await env.DB.prepare(
         'SELECT sent_ms FROM dart_filings WHERE receipt_no=?'
       ).bind(item.receipt).first();
-      // Handle pre-migration DART deliveries even if KIND and DART used
-      // different receipt numbers for the same preliminary earnings report.
       let alreadySent = Boolean(dart?.sent_ms);
-      if (!alreadySent && eventKey) {
-        const prior = (await env.DB.prepare(
-          'SELECT report_name,filed_date FROM dart_filings WHERE ticker=? AND filed_date=? AND sent_ms IS NOT NULL'
+      let matchingDartExists = Boolean(dart);
+      if (eventKey) {
+        // Compare all same-day DART filings, not only already-sent rows:
+        // DART may be queued, fetching a body, or retrying after a failure.
+        const rows = (await env.DB.prepare(
+          'SELECT report_name,filed_date,sent_ms FROM dart_filings WHERE ticker=? AND filed_date=?'
         ).bind(item.ticker,item.event_date.replace(/-/g,'')).all()).results || [];
-        alreadySent=prior.some(row=>sharedDisclosureKey({
+        const matches = rows.filter(row => sharedDisclosureKey({
           ticker:item.ticker,title:row.report_name,date:row.filed_date
         })===eventKey);
+        if (matches.length) {
+          matchingDartExists = true;
+          alreadySent ||= matches.some(row=>row.sent_ms !== null);
+        }
       }
-      // Give DART 90 seconds to arrive only when no equivalent result has
-      // already been delivered through either provider.
-      if(!alreadySent && eventKey && now-item.created_ms < 90_000) continue;
+      // If DART has this disclosure, KIND never sends its copy. While DART
+      // is pending, let it retry rather than racing it with a KIND fallback.
+      if (!alreadySent && eventKey && matchingDartExists) continue;
+      // If only KIND has appeared, give DART a fair opportunity to arrive.
+      // Without a matching DART record, a genuine KIND-only disclosure can
+      // still reach the user after this bounded grace period.
+      if (!alreadySent && eventKey && now-item.created_ms < DART_PRIORITY_WAIT_MS) continue;
       let claim=null;
       if (!alreadySent && eventKey) {
         claim=await claimDisclosure(env,eventKey,'kind',item.event_key,now);
