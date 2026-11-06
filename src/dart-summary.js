@@ -26,6 +26,9 @@ const labelType = s => definitions.find(([,pattern])=>pattern.test(cleanLabel(s)
 const shorten = (s,n) => s.length>n?s.slice(0,n-1)+'…':s;
 export function summarizeFiling(report, body){
  if(!body?.trim())return '본문을 불러오지 못했습니다. 원문 링크에서 확인해 주세요.';
+ // Never present corrupted byte-decoding as verified accounting figures.
+ if((String(body).slice(0,3000).match(/\uFFFD/g)||[]).length >= 3)
+   return '본문의 한글 인코딩이 손상되어 수치를 안전하게 요약할 수 없습니다. DART 원문 링크에서 확인해 주세요.';
  const buyback=buybackSummary(report,body);
  if(buyback)return buyback;
  const lines=body.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
