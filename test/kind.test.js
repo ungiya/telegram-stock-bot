@@ -84,7 +84,12 @@ test('KIND does not repeat DART earnings even with another receipt; unrelated fi
  assert.equal(result.sent,0,'KIND must skip DART-delivered earnings across different receipt ids');
  assert.equal(f.replies.length,0);
  assert.ok(f.sql.prepare('SELECT sent_ms FROM kind_items WHERE event_key=?').get('disclosure:'+kind.id).sent_ms);
- assert.equal((await run(f,0,[{...disclosure('20261102000023'),title:'신규 공급 계약 체결'}])).sent,1);
+ assert.equal((await run(f,0,[{...disclosure('20261102000023'),title:'신규 공급 계약 체결'}])).sent,0,
+  'DART is preferred for ordinary matching disclosures too');
+ assert.equal((await runKindCheck(f.env,sourceTime(0),{
+  now:NOW+DART_PRIORITY_WAIT_MS+1000,
+  collector:async()=>[{...disclosure('20261102000023'),title:'신규 공급 계약 체결'}]
+ })).sent,1,'a genuinely KIND-only contract arrives after DART wait');
  assert.match(f.replies[0].text,/신규 공급 계약/);
 });
 
