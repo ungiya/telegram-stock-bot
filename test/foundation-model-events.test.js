@@ -75,3 +75,51 @@ test('genuinely new outcomes and model versions are separate events',()=>{
   assert.equal(coveredNewsEvent({...first,ticker:'크래프톤',url:'https://unrelated.example/article'}),null);
   assert.equal(learningUnitReleaseRelation(first,{...second,ticker:'씨어스'}),null);
 });
+
+
+
+test('later user screenshots: truncated Wide Economy title and News1 "hospital validation complete" are the same release',()=>{
+  const at=Date.parse('2026-11-06T11:15:00+09:00');
+  const variants=[
+    {ticker:'루닛',pub_ms:at,
+      title:"[루닛] '원내 서버서 진료 보조부터 원무까지'…루닛, 오픈소스 의료 AI '러닝유...",
+      description:"의료 인공지능(AI) 전문기업 루닛이 병원 내부 전산망에서 독립적으로 구동하며 진료와 행정 전반을 지원하는 의료 특화 파운데이션 모델을 선보였다. 루닛은 과학기술정보통신부 주관 국가 전략 과제인 '의과학 특화...",
+      url:'https://www.wedaily.com/news/articleView.html?idxno=303039'},
+    {ticker:'루닛',pub_ms:at+4*60000,
+      title:"[루닛] 루닛, 의료 특화 AI '러닝유닛 2.0' 공개…병원 현장 실증 완료",
+      description:"의료 인공지능(AI) 기업 루닛(328130)이 의료기관의 진료와 행정 업무를 지원하는 의료 특화 파운데이션 모델을 공개했다. 의료 관련 질문에 답하는 수준을 넘...",
+      url:'https://www.news1.kr/bio/healthcare/6345418'}
+  ];
+  for(const item of variants){
+    assert.equal(reportedLunitLearningUnit20(item),true,item.title);
+    assert.equal(coveredNewsEvent(item),key,item.title);
+    assert.equal(queuedNewsExcluded(item),true,item.title);
+    assert.equal(sameNews(first,item),true,item.title);
+    assert.equal(sameNews(item,second),true,item.title);
+    assert.equal(normalizeArticle({
+      title:item.title,description:item.description,originallink:item.url,
+      pubDate:new Date(item.pub_ms).toUTCString()
+    },'루닛',at+3600000),null,item.title);
+    // It is not enough to block the two URL strings; a new outlet's paraphrase
+    // must be rejected by the EVENT identity as well.
+    assert.equal(reportedLunitLearningUnit20({...item,url:'https://thirdpress.example/news/unknown'}),true,item.title);
+  }
+  assert.equal(learningUnitReleaseRelation(variants[0],variants[1]),true);
+  for(const item of variants) {
+    assert.equal(coveredNewsEvent({...item,description:'',title:'다른 제목',pub_ms:undefined}),key,
+      'permanently block the exact already-delivered user-reported URL');
+  }
+});
+
+test('new independent verification after model launch is not confused with original rollout',()=>{
+  const newer=[
+    '루닛 러닝유닛 2.0 독립 실증 완료…임상 성과 발표',
+    '루닛 러닝유닛 2.0 신규 병원 도입 계약 체결',
+    '루닛 러닝유닛 2.0 새로운 2.1 모델 출시'
+  ];
+  for(const title of newer){
+    const x={...first,url:'https://another-press.example/material',title};
+    assert.equal(reportedLunitLearningUnit20(x),false,title);
+    assert.equal(coveredNewsEvent(x),null,title);
+  }
+});
