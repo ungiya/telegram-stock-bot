@@ -35,7 +35,7 @@ export function reportedPubgSteamRank(item){
  // Require explicit subject, Steam platform, and the actual *sales ranking*.
  if(!game.test(context)||!steam.test(context)||!rank.test(context)||!sales.test(context))
   return false;
- if(!/1\s*위|매출\s*정상|매출\s*선두/.test(title))return false;
+ if(!rank.test(title))return false;
  if(otherRank.test(title)||newDevelopment.test(title))return false;
  // An explicit chart snapshot of a later day is a new dated measurement.
  if(/(?:11월\s*)?(?:7|8|9|10|11|12|13)일\s*(?:기준|집계|현재)/.test(title))return false;
@@ -44,11 +44,17 @@ export function reportedPubgSteamRank(item){
 export function pubgSteamRankRelation(a,b){
  if(a.ticker!==b.ticker)return null;
  const at=stamp(a),bt=stamp(b);
- if(!Number.isFinite(at)||!Number.isFinite(bt)||Math.abs(at-bt)>7*DAY)return null;
+ if(!Number.isFinite(at)||!Number.isFinite(bt))return null;
  const x=reportedPubgSteamRank(a),y=reportedPubgSteamRank(b);
- if(x&&y)return true;
  const gameAndSteam=item=>game.test(norm(item.title)+' '+norm(item.description)) &&
   steam.test(norm(item.title)+' '+norm(item.description));
+ // A new, independently dated chart after the initial Nov 6 announcement must
+ // not be merged by the generic title-similarity fallback.
+ if(Math.abs(at-bt)>7*DAY) {
+  if((x||y)&&gameAndSteam(a)&&gameAndSteam(b))return false;
+  return null;
+ }
+ if(x&&y)return true;
  if(x!==y && gameAndSteam(a)&&gameAndSteam(b))return false;
  return null;
 }
