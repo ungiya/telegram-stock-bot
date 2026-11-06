@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {earningsDisclosureKey,claimDisclosure,finishDisclosure,releaseDisclosure} from '../src/disclosure-dedup.js';
+import {earningsDisclosureKey,ownershipDisclosureKey,sharedDisclosureKey,claimDisclosure,finishDisclosure,releaseDisclosure} from '../src/disclosure-dedup.js';
 
 const date='2026-11-06';
 const filing=(ticker,title,d=date)=>({ticker,title,date:d});
@@ -89,4 +89,57 @@ test('missing migration does not stop legacy DART/KIND delivery while rollout co
  assert.equal(result.reason,'migration_pending');
  await finishDisclosure(env,result,Date.now());
  await releaseDisclosure(env,result);
+});
+
+
+
+test('Nov 6 two companies share the title but not the event; KIND/DART form variants match',()=>{
+ const title='주식등의대량보유상황보고서(약식)';
+ const seojin=sharedDisclosureKey({ticker:'서진시스템',title,date:'2026-11-06'});
+ const hanjung=sharedDisclosureKey({ticker:'한중엔시에스',title,date:'2026-11-06'});
+ assert.ok(seojin?.startsWith('ownership-5pct:'));
+ assert.ok(hanjung?.startsWith('ownership-5pct:'));
+ assert.notEqual(seojin,hanjung,'one company must not suppress a different company');
+ assert.equal(seojin,sharedDisclosureKey({ticker:'서진시스템',
+   report_name:'주식 등의 대량 보유 상황 보고서 (약식)',filed_date:'20261106'}));
+ assert.equal(seojin,ownershipDisclosureKey({ticker:'서진시스템',
+   title:'주식등의대량보유상황보고서(약식)',date:'20261106'}));
+ assert.notEqual(seojin,sharedDisclosureKey({ticker:'서진시스템',title,
+   date:'2026-11-07'}),'different day must stay separate');
+ assert.notEqual(seojin,sharedDisclosureKey({ticker:'서진시스템',
+   title:'주식등의대량보유상황보고서',date:'2026-11-06'}),'short and general are different forms');
+ for(const amended of ['[기재정정]'+title,'[정정] '+title,'[첨부정정]'+title])
+   assert.equal(sharedDisclosureKey({ticker:'서진시스템',title:amended,date:'2026-11-06'}),null);
+ assert.equal(sharedDisclosureKey({ticker:'서진시스템',
+   title:'주요주주특정증권등소유상황보고서',date:'2026-11-06'}),null);
+});
+
+test('atomic cross-source large-shareholding notice sends once, same-source distinct receipts stay eligible',async t=>{
+ const f=fixture(t), now=Date.parse('2026-11-06T16:25:00+09:00');
+ const key=sharedDisclosureKey({ticker:'서진시스템',
+   title:'주식등의대량보유상황보고서(약식)',date:'2026-11-06'});
+ const dart=await claimDisclosure(f.env,key,'dart','20261106000359',now);
+ assert.equal(dart.status,'claimed');
+ assert.equal((await claimDisclosure(f.env,key,'kind','20261106000804',now+1000)).status,'busy');
+ await finishDisclosure(f.env,dart,now+2000);
+ assert.equal((await claimDisclosure(f.env,key,'kind','20261106000804',now+3000)).status,'duplicate');
+ const second=await claimDisclosure(f.env,key,'dart','20261106000367',now+4000);
+ assert.equal(second.status,'not_applicable','a distinct DART filing must remain alertable');
+ assert.equal(second.reason,'same_source_distinct_receipt');
+ const corrected=sharedDisclosureKey({ticker:'서진시스템',
+   title:'[기재정정] 주식등의대량보유상황보고서(약식)',date:'2026-11-06'});
+ assert.equal(corrected,null);
+ const another=sharedDisclosureKey({ticker:'한중엔시에스',
+   title:'주식등의대량보유상황보고서(약식)',date:'2026-11-06'});
+ assert.equal((await claimDisclosure(f.env,another,'dart','20261106000366',now+5000)).status,'claimed');
+});
+
+test('ownership cross-source first sent via KIND stops DART; old earnings key still works',async t=>{
+ const f=fixture(t),now=Date.parse('2026-11-06T16:25:00+09:00');
+ const key=sharedDisclosureKey({ticker:'한중엔시에스',
+   title:'주식등의대량보유상황보고서(약식)',date:'20261106'});
+ const a=await claimDisclosure(f.env,key,'kind','20261106000809',now);
+ await finishDisclosure(f.env,a,now);
+ assert.equal((await claimDisclosure(f.env,key,'dart','20261106000366',now+10000)).status,'duplicate');
+ assert.equal(sharedDisclosureKey(filing('씨어스',connected)),earningsDisclosureKey(filing('씨어스',connected)));
 });
