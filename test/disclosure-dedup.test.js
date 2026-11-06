@@ -108,10 +108,12 @@ test('Nov 6 two companies share the title but not the event; KIND/DART form vari
    date:'2026-11-07'}),'different day must stay separate');
  assert.notEqual(seojin,sharedDisclosureKey({ticker:'서진시스템',
    title:'주식등의대량보유상황보고서',date:'2026-11-06'}),'short and general are different forms');
- for(const amended of ['[기재정정]'+title,'[정정] '+title,'[첨부정정]'+title])
-   assert.equal(sharedDisclosureKey({ticker:'서진시스템',title:amended,date:'2026-11-06'}),null);
- assert.equal(sharedDisclosureKey({ticker:'서진시스템',
-   title:'주요주주특정증권등소유상황보고서',date:'2026-11-06'}),null);
+ for(const amended of ['[기재정정]'+title,'[정정] '+title,'[첨부정정]'+title]) {
+   const amendmentKey=sharedDisclosureKey({ticker:'서진시스템',title:amended,date:'2026-11-06'});
+   assert.notEqual(amendmentKey,seojin,'correction must remain a distinct notification');
+ }
+ assert.notEqual(sharedDisclosureKey({ticker:'서진시스템',
+   title:'주요주주특정증권등소유상황보고서',date:'2026-11-06'}),seojin);
 });
 
 test('atomic cross-source large-shareholding notice sends once, same-source distinct receipts stay eligible',async t=>{
@@ -128,7 +130,7 @@ test('atomic cross-source large-shareholding notice sends once, same-source dist
  assert.equal(second.reason,'same_source_distinct_receipt');
  const corrected=sharedDisclosureKey({ticker:'서진시스템',
    title:'[기재정정] 주식등의대량보유상황보고서(약식)',date:'2026-11-06'});
- assert.equal(corrected,null);
+ assert.notEqual(corrected,key,'a corrected filing may deduplicate across providers, but not with the original');
  const another=sharedDisclosureKey({ticker:'한중엔시에스',
    title:'주식등의대량보유상황보고서(약식)',date:'2026-11-06'});
  assert.equal((await claimDisclosure(f.env,another,'dart','20261106000366',now+5000)).status,'claimed');
