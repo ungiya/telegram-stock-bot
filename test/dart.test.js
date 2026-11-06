@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { DART_CRON, diagnoseDartRequest, runDartCheck, matchDartCompany, normalizeFiling, kstDate } from '../src/dart.js';
 import { handleCommand } from '../src/commands.js';
+import { runKindCheck } from '../src/kind.js';
 import worker from '../src/worker.js';
 
 function fixture(t) {
@@ -290,4 +291,65 @@ test('DART earnings after KIND stale or active claim is safely retried and never
  assert.equal(receipt.source,'dart');
  assert.ok(receipt.delivered_ms>0);
  assert.equal((await runDartCheck(f.env,NOW+6*60000)).sent,0);
+});
+
+
+
+test('Nov 6 DART first: two companies each send one detailed ownership filing; KIND copies stay silent',async t=>{
+ const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
+ const report='주식등의대량보유상황보고서(약식)';
+ const filings=[
+  {corp_name:'서진시스템',rcept_no:'20261106000359',rcept_dt:'20261106',report_nm:report},
+  {corp_name:'한중엔시에스',rcept_no:'20261106000366',rcept_dt:'20261106',report_nm:report}
+ ];
+ const kind=[
+  {id:'20261106000804',company:'서진시스템',title:report,eventDate:'2026-11-06',
+   url:'https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261106000804&docno=&viewerhost='},
+  {id:'20261106000809',company:'한중엔시에스',title:report,eventDate:'2026-11-06',
+   url:'https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261106000809&docno=&viewerhost='}
+ ];
+ f.setPages([[filing('20261106000001')]]);await runDartCheck(f.env,now); // initial DART baseline
+ await runKindCheck(f.env,slot,{now,collector:async()=>[]}); // initial KIND baseline
+ f.setPages([[...filings,filing('20261106000001')]]);
+ const sent=await runDartCheck(f.env,now+60000);
+ assert.equal(sent.sent,2);
+ assert.equal(f.replies.length,2);
+ assert.match(f.replies[0].text,/서진시스템/);
+ assert.match(f.replies[1].text,/한중엔시에스/);
+ const copy=await runKindCheck(f.env,slot,{now:now+61000,collector:async()=>kind});
+ assert.equal(copy.sent,0);
+ assert.equal(f.replies.length,2,'both KIND copies are suppressed');
+ const rows=f.sql.prepare('SELECT ticker,sent_ms FROM kind_items WHERE receipt IS NOT NULL ORDER BY ticker').all();
+ assert.equal(rows.length,2);assert.ok(rows.every(x=>x.sent_ms!==null));
+ // An amendment of the same report is a material new disclosure.
+ f.setPages([[{corp_name:'서진시스템',rcept_no:'20261106000360',rcept_dt:'20261106',
+  report_nm:'[기재정정]'+report},...filings]]);
+ assert.equal((await runDartCheck(f.env,now+120000)).sent,1);
+ assert.match(f.replies.at(-1).text,/기재정정/);
+});
+
+test('Nov 6 KIND fallback first: two ownership notices send once after 90s; later DART copies are suppressed',async t=>{
+ const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
+ const report='주식등의대량보유상황보고서(약식)';
+ const kind=[
+  {id:'20261106000804',company:'서진시스템',title:report,eventDate:'2026-11-06',
+   url:'https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261106000804&docno=&viewerhost='},
+  {id:'20261106000809',company:'한중엔시에스',title:report,eventDate:'2026-11-06',
+   url:'https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261106000809&docno=&viewerhost='}
+ ];
+ await runKindCheck(f.env,slot,{now,collector:async()=>[]});
+ f.setPages([[filing('20261106000001')]]);await runDartCheck(f.env,now);
+ assert.equal((await runKindCheck(f.env,slot,{now:now+60000,collector:async()=>kind})).sent,0,
+  'KIND waits briefly for a full DART filing');
+ assert.equal((await runKindCheck(f.env,slot,{now:now+190000,collector:async()=>kind})).sent,2);
+ assert.equal(f.replies.length,2);
+ f.setPages([[
+  {corp_name:'서진시스템',rcept_no:'20261106000359',rcept_dt:'20261106',report_nm:report},
+  {corp_name:'한중엔시에스',rcept_no:'20261106000366',rcept_dt:'20261106',report_nm:report}
+ ]]);
+ assert.equal((await runDartCheck(f.env,now+240000)).sent,0);
+ assert.equal(f.replies.length,2);
+ const sent=f.sql.prepare('SELECT sent_ms FROM dart_filings WHERE receipt_no IN (?,?)')
+  .all('20261106000359','20261106000366');
+ assert.equal(sent.length,2);assert.ok(sent.every(x=>x.sent_ms!==null));
 });
