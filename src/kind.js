@@ -139,7 +139,6 @@ export async function runKindCheck(env, scheduledAt = Date.now(), options = {}) 
       const dart = item.receipt && await env.DB.prepare(
         'SELECT sent_ms FROM dart_filings WHERE receipt_no=?'
       ).bind(item.receipt).first();
-      if (!dart?.sent_ms && eventKey && now-item.created_ms < 90_000) continue;
       // Handle pre-migration DART deliveries even if KIND and DART used
       // different receipt numbers for the same preliminary earnings report.
       let alreadySent = Boolean(dart?.sent_ms);
@@ -151,6 +150,9 @@ export async function runKindCheck(env, scheduledAt = Date.now(), options = {}) 
           ticker:item.ticker,title:row.report_name,date:row.filed_date
         })===eventKey);
       }
+      // Give DART 90 seconds to arrive only when no equivalent result has
+      // already been delivered through either provider.
+      if(!alreadySent && eventKey && now-item.created_ms < 90_000) continue;
       let claim=null;
       if (!alreadySent && eventKey) {
         claim=await claimDisclosure(env,eventKey,'kind',item.event_key,now);
