@@ -1,3 +1,4 @@
+import { reportedPubgSteamRank, pubgSteamRankRelation } from './game-ranking-events.js';
 import { crossPublisherAnnouncementRelation } from './cross-publisher-announcements.js';
 import { reportedLunitLearningUnit20, learningUnitReleaseRelation } from './foundation-model-events.js';
 import { sharedNewsKeywords } from './news-keywords.js';
@@ -220,6 +221,8 @@ export function sameNews(a, b) {
   if (a.ticker !== b.ticker) return false;
   const gameCollaboration=gameCollaborationRelation(a,b);
   if(gameCollaboration !== null)return gameCollaboration;
+  const steamRank=pubgSteamRankRelation(a,b);
+  if(steamRank!==null)return steamRank;
   const researchConference=researchConferenceRelation(a,b);
   if(researchConference !== null)return researchConference;
   const technologyTransfer=technologyTransferRelation(a,b);
@@ -366,6 +369,7 @@ export function reportedKiffLaunch(item) {
 }
 
 export function coveredNewsEvent(item) {
+  if(reportedPubgSteamRank(item))return 'event:krafton-pubg-steam-sales-1st-2026-11-06';
   if(reportedLunitLearningUnit20(item))return 'event:lunit-learningunit20-foundation-model-launch-2026-11-06';
   const canada=medicubeCanadaEntry(item);
   if(canada && (!canada.count||canada.count===1300) &&
