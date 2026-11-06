@@ -38,7 +38,7 @@ export function reportedLunitLearningUnit20(item) {
     date<Date.parse('2026-11-04T00:00:00+09:00')||
     date>=Date.parse('2026-11-20T00:00:00+09:00'))return false;
  const title=norm(item.title),desc=norm(item.description),body=title+' '+desc;
- if(newMilestone.test(title))return false;
+ if(newMilestone.test(title) || /(?:새로운|후속|차세대|신규)\s*(?:모델\s*)?\d+[.]\d+\s*(?:모델|버전)?/i.test(title))return false;
  // A different version (e.g. 2.1 or 3.0) is a new model, even if its summary
  // mentions the older 2.0 announcement as background.
  for(const m of body.matchAll(namedVersion)) {
