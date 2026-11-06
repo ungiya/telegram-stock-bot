@@ -54,3 +54,20 @@ test('legacy Korean viewer bytes are decoded before extracting body',async t=>{
   u.includes('main.do')?new Response(`viewDoc("${receipt}", "123", "0", "0", "0", "HTML")`):new Response(bytes);
  assert.equal(await fetchFilingBody({DART_API_KEY:'test'},receipt),'가'.repeat(40));
 });
+
+
+test('DART HTML with no declared charset falls back from broken UTF-8 to CP949',async()=>{
+  const {decodeFilingBytes}=await import('../src/dart-body.js');
+  // CP949 / EUC-KR bytes for the Korean word 가나다.
+  const raw=new Uint8Array([0x3c,0x62,0x6f,0x64,0x79,0x3e,
+    0xb0,0xa1,0xb3,0xaa,0xb4,0xd9,0x3c,0x2f,0x62,0x6f,0x64,0x79,0x3e]);
+  const decoded=decodeFilingBytes(raw);
+  assert.equal(decoded,'<body>가나다</body>');
+  assert.doesNotMatch(decoded,/\uFFFD/);
+  const laterHeader=new Uint8Array([
+    ...new TextEncoder().encode('<!--'+' '.repeat(700)+'--><meta charset="euc-kr"><p>'),
+    0xb0,0xa1,0xb3,0xaa,0xb4,0xd9,...new TextEncoder().encode('</p>')]);
+  assert.match(decodeFilingBytes(laterHeader),/가나다/);
+  assert.equal(decodeFilingBytes(new TextEncoder().encode('<body>매출액 영업이익 정상</body>')),
+    '<body>매출액 영업이익 정상</body>');
+});
