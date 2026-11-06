@@ -76,3 +76,17 @@ test('abandoned claim can be recovered after TTL, never overwrite a completed de
  await finishDisclosure(f.env,b,now+4*60000);
  assert.equal((await claimDisclosure(f.env,key,'kind','A',now+8*60000)).status,'duplicate');
 });
+
+
+
+test('missing migration does not stop legacy DART/KIND delivery while rollout completes',async t=>{
+ const sql=new DatabaseSync(':memory:');
+ t.after(()=>sql.close());
+ const env={DB:{prepare(q){const stmt=(v=[])=>({bind:(...x)=>stmt(x),first:async()=>sql.prepare(q).get(...v)||null});return stmt();}}};
+ const key=earningsDisclosureKey(filing('씨어스',connected));
+ const result=await claimDisclosure(env,key,'dart','test',Date.now());
+ assert.equal(result.status,'not_applicable');
+ assert.equal(result.reason,'migration_pending');
+ await finishDisclosure(env,result,Date.now());
+ await releaseDisclosure(env,result);
+});
