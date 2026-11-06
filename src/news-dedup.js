@@ -230,8 +230,6 @@ export function sameNews(a, b) {
   if(platformLaunch !== null)return platformLaunch;
   const foundation=learningUnitReleaseRelation(a,b);
   if(foundation !== null)return foundation;
-  const crossPublisher=crossPublisherAnnouncementRelation(a,b);
-  if(crossPublisher !== null)return crossPublisher;
   const common=commonEventRelation(a,b);
   if(common !== null) return common;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
@@ -261,6 +259,10 @@ export function sameNews(a, b) {
   if (clinical !== null) return clinical;
   const conference = conferenceRelation(a,b);
   if (conference !== null) return conference;
+  // Company-agnostic fallback runs only after the precise event-specific
+  // comparators, so R&D days and exhibitions keep their own semantics.
+  const crossPublisher=crossPublisherAnnouncementRelation(a,b);
+  if(crossPublisher !== null)return crossPublisher;
   // Incidental dates and unrelated endpoints in summaries do not identify a new event.
   // Material financial amounts and reporting-quarter changes still do.
   if (conflictingFacts(a.description, b.description, new Set(['amount', '분기']))) return false;
