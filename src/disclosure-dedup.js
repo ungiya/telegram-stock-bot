@@ -42,8 +42,21 @@ export function ownershipDisclosureKey({ticker,title,report_name,date,event_date
  return 'ownership-5pct:'+encodeURIComponent(String(ticker).normalize('NFKC'))+':'+day+':'+form;
 }
 
+// Identical corporate disclosures can be mirrored by both providers even when
+// they are neither preliminary earnings nor 5-percent ownership reports.
+// Keep correction markers in the normalized title so a correction remains a
+// separate event from the original. Different days/companies never merge.
+export function ordinaryDisclosureKey({ticker,title,report_name,date,event_date,filed_date}) {
+ if (!ticker) return null;
+ const day=dateKey(date??event_date??filed_date);
+ const compact=tidy(title??report_name).replace(/[^가-힣a-z0-9]/g,'');
+ if (!day || compact.length<8) return null;
+ return 'disclosure-title:'+encodeURIComponent(String(ticker).normalize('NFKC'))+
+   ':'+day+':'+encodeURIComponent(compact.slice(0,180));
+}
+
 export function sharedDisclosureKey(item) {
- return earningsDisclosureKey(item) || ownershipDisclosureKey(item);
+ return earningsDisclosureKey(item) || ownershipDisclosureKey(item) || ordinaryDisclosureKey(item);
 }
 
 // An atomic key protects even when KIND and DART cron handlers overlap.
@@ -70,10 +83,10 @@ export async function claimDisclosure(env,key,source,receipt,now) {
  if(row)return {status:'claimed',key,source,receipt};
  const previous=await env.DB.prepare('SELECT delivered_ms,source,receipt FROM disclosure_deliveries WHERE event_key=?')
   .bind(key).first();
- // Same-company same-day ownership reports from TWO DIFFERENT shareholders may
- // have identical titles. Never deduplicate separate receipts from the SAME
- // source; it is only a cross-provider fingerprint in that case.
- if(key.startsWith('ownership-5pct:') && previous?.delivered_ms != null &&
+ // Same-company same-day disclosures may share a headline yet contain
+ // different underlying reports. Deduplicate by generic/title or ownership
+ // fingerprint ACROSS providers, never suppress separate same-source receipts.
+ if((key.startsWith('ownership-5pct:') || key.startsWith('disclosure-title:')) && previous?.delivered_ms != null &&
     previous.source===source && previous.receipt!==receipt)
    return {status:'not_applicable',reason:'same_source_distinct_receipt'};
  return {status:previous?.delivered_ms!==null&&previous?.delivered_ms!==undefined?'duplicate':'busy',key,source,receipt};
