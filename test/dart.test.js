@@ -248,3 +248,46 @@ test('legacy full-body messages already started do not continue after summary ro
  f.sql.exec('UPDATE bot_runtime SET paused=0');await runDartCheck(f.env,NOW+120000);
  assert.equal(f.replies.length,0);assert.ok(f.sql.prepare('SELECT sent_ms FROM dart_filings WHERE receipt_no=?').get(fresh.rcept_no).sent_ms);
 });
+
+
+
+test('DART does not repeat KIND preliminary earnings filed under a different receipt',async t=>{
+ const f=fixture(t);
+ f.setPages([[old]]);
+ await runDartCheck(f.env,NOW); // initial DART baseline
+ const report='연결재무제표기준영업(잠정)실적(공정공시)';
+ f.sql.prepare('INSERT INTO kind_items(event_key,receipt,ticker,body,event_date,sent_ms,created_ms) VALUES(?,?,?,?,?,?,?)')
+  .run('disclosure:20261102000051','20261102000051','효성중공업',
+   '[KIND 공시] [효성중공업] '+report+'\n공시일: 2026-11-02\nhttps://kind.krx.co.kr/',
+   '2026-11-02',NOW,NOW);
+ const freshEarnings=filing('20261102000052',report);
+ f.setPages([[freshEarnings,old]]);
+ const result=await runDartCheck(f.env,NOW+60000);
+ assert.equal(result.sent,0,'DART should skip prior KIND notification for same preliminary earnings');
+ assert.equal(f.replies.length,0);
+ assert.ok(f.sql.prepare('SELECT sent_ms FROM dart_filings WHERE receipt_no=?').get(freshEarnings.rcept_no).sent_ms);
+ const unrelated=filing('20261102000053','단일판매ㆍ공급계약체결');
+ f.setPages([[unrelated,freshEarnings,old]]);
+ assert.equal((await runDartCheck(f.env,NOW+120000)).sent,1);
+ assert.match(f.replies[0].text,/공급계약/);
+});
+
+test('DART earnings after KIND stale or active claim is safely retried and never double-sent',async t=>{
+ const f=fixture(t),report='연결재무제표기준영업(잠정)실적(공정공시)';
+ f.setPages([[old]]);await runDartCheck(f.env,NOW);
+ const item=filing('20261102000054',report);
+ const key='earnings-prelim:'+encodeURIComponent('효성중공업')+':20261102:consolidated';
+ f.sql.prepare('INSERT INTO disclosure_deliveries(event_key,source,receipt,claimed_ms,delivered_ms) VALUES(?,?,?,?,NULL)')
+  .run(key,'kind','KIND-RECEIPT',NOW+59000);
+ f.setPages([[item,old]]);
+ assert.equal((await runDartCheck(f.env,NOW+60000)).sent,0);
+ assert.equal(f.replies.length,0);
+ assert.equal(f.sql.prepare('SELECT sent_ms FROM dart_filings WHERE receipt_no=?').get(item.rcept_no).sent_ms,null);
+ // A stale KIND claim can be safely reclaimed by DART.
+ assert.equal((await runDartCheck(f.env,NOW+5*60000)).sent,1);
+ assert.equal(f.replies.length,1);
+ const receipt=f.sql.prepare('SELECT source,delivered_ms FROM disclosure_deliveries WHERE event_key=?').get(key);
+ assert.equal(receipt.source,'dart');
+ assert.ok(receipt.delivered_ms>0);
+ assert.equal((await runDartCheck(f.env,NOW+6*60000)).sent,0);
+});
