@@ -82,7 +82,12 @@ export function crossPublisherAnnouncementRelation(a,b) {
   if(!Number.isFinite(at)||!Number.isFinite(bt)||Math.abs(at-bt)>7*DAY)return null;
   const ta=normalize(a.title),tb=normalize(b.title);
   // Avoid merging genuinely new events that quote a former launch in the body.
-  if(changed.test(ta)||changed.test(tb))return null;
+  // A new contract, clinical result, version or correction must not be
+  // swallowed by the older generic text-similarity matcher downstream.
+  // Explicitly veto initial-announcement vs material-followup pairs.
+  const aChanged=changed.test(ta), bChanged=changed.test(tb);
+  if(aChanged!==bChanged)return false;
+  if(aChanged||bChanged)return null;
   if(incompatibleVersions(a,b))return false;
   if(clearlyDifferentProducts(a,b))return false;
   const da=normalize(a.description).slice(0,520);
