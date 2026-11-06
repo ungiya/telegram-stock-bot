@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { DART_CRON, diagnoseDartRequest, runDartCheck, matchDartCompany, normalizeFiling, kstDate } from '../src/dart.js';
 import { handleCommand } from '../src/commands.js';
-import { runKindCheck } from '../src/kind.js';
+import { runKindCheck, DART_PRIORITY_WAIT_MS } from '../src/kind.js';
 import worker from '../src/worker.js';
 
 function fixture(t) {
@@ -328,7 +328,7 @@ test('Nov 6 DART first: two companies each send one detailed ownership filing; K
  assert.match(f.replies.at(-1).text,/기재정정/);
 });
 
-test('Nov 6 KIND fallback first: two ownership notices send once after 90s; later DART copies are suppressed',async t=>{
+test('Nov 6 KIND-only fallback after 30-minute DART priority window; very late DART copies stay silent',async t=>{
  const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
  const report='주식등의대량보유상황보고서(약식)';
  const kind=[
@@ -341,15 +341,66 @@ test('Nov 6 KIND fallback first: two ownership notices send once after 90s; late
  f.setPages([[filing('20261106000001')]]);await runDartCheck(f.env,now);
  assert.equal((await runKindCheck(f.env,slot,{now:now+60000,collector:async()=>kind})).sent,0,
   'KIND waits briefly for a full DART filing');
- assert.equal((await runKindCheck(f.env,slot,{now:now+190000,collector:async()=>kind})).sent,2);
+ assert.equal((await runKindCheck(f.env,slot,{now:now+DART_PRIORITY_WAIT_MS,collector:async()=>kind})).sent,0);
+ assert.equal((await runKindCheck(f.env,slot,{now:now+60000+DART_PRIORITY_WAIT_MS,collector:async()=>kind})).sent,2);
  assert.equal(f.replies.length,2);
  f.setPages([[
   {corp_name:'서진시스템',rcept_no:'20261106000359',rcept_dt:'20261106',report_nm:report},
   {corp_name:'한중엔시에스',rcept_no:'20261106000366',rcept_dt:'20261106',report_nm:report}
  ]]);
- assert.equal((await runDartCheck(f.env,now+240000)).sent,0);
+ assert.equal((await runDartCheck(f.env,now+120000+DART_PRIORITY_WAIT_MS)).sent,0);
  assert.equal(f.replies.length,2);
  const sent=f.sql.prepare('SELECT sent_ms FROM dart_filings WHERE receipt_no IN (?,?)')
   .all('20261106000359','20261106000366');
  assert.equal(sent.length,2);assert.ok(sent.every(x=>x.sent_ms!==null));
+});
+
+
+
+test('KIND discovered before DART: queued matching DART has permanent priority, even past KIND fallback timeout',async t=>{
+ const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
+ const report='주식등의대량보유상황보고서(약식)';
+ const filings=[
+  {corp_name:'서진시스템',rcept_no:'20261106000359',rcept_dt:'20261106',report_nm:report},
+  {corp_name:'한중엔시에스',rcept_no:'20261106000366',rcept_dt:'20261106',report_nm:report}
+ ];
+ const kind=[
+  {id:'20261106000804',company:'서진시스템',title:report,eventDate:'2026-11-06',
+   url:'https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261106000804'},
+  {id:'20261106000809',company:'한중엔시에스',title:report,eventDate:'2026-11-06',
+   url:'https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261106000809'}
+ ];
+ await runKindCheck(f.env,slot,{now,collector:async()=>[]});
+ f.setPages([[filing('20261106000001')]]);await runDartCheck(f.env,now);
+ assert.equal((await runKindCheck(f.env,slot,{now:now+60000,collector:async()=>kind})).sent,0);
+ f.sql.exec('UPDATE bot_runtime SET paused=1');
+ f.setPages([[...filings,filing('20261106000001')]]);
+ assert.equal((await runDartCheck(f.env,now+120000)).sent,0);
+ assert.equal(f.sql.prepare("SELECT count(*) AS n FROM dart_filings WHERE sent_ms IS NULL AND ticker IN ('서진시스템','한중엔시에스')").get().n,2);
+ f.sql.exec('UPDATE bot_runtime SET paused=0');
+ assert.equal((await runKindCheck(f.env,slot,{
+  now:now+DART_PRIORITY_WAIT_MS+300000,collector:async()=>kind
+ })).sent,0,'KIND cannot overtake a DART filing present in its queue');
+ assert.equal(f.replies.length,0);
+ assert.equal((await runDartCheck(f.env,now+DART_PRIORITY_WAIT_MS+360000)).sent,2);
+ assert.equal(f.replies.length,2);
+ assert.ok(f.replies.every(x=>x.text.startsWith('[공시]')),'only DART source delivered');
+ assert.equal((await runKindCheck(f.env,slot,{
+  now:now+DART_PRIORITY_WAIT_MS+420000,collector:async()=>kind
+ })).sent,0);
+ assert.equal(f.replies.length,2);
+ assert.deepEqual(f.sql.prepare('SELECT source FROM disclosure_deliveries ORDER BY event_key').all().map(x=>x.source),
+  ['dart','dart']);
+});
+
+test('KIND waits for any pending DART receipt, including non-shared reports',async t=>{
+ const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
+ await runKindCheck(f.env,slot,{now,collector:async()=>[]});
+ const kind={id:'20261106000077',company:'효성중공업',title:'단일판매ㆍ공급계약체결',
+  eventDate:'2026-11-06',url:'https://kind.krx.co.kr/disclosure/77'};
+ f.sql.prepare('INSERT INTO dart_filings(receipt_no,ticker,company_name,report_name,filed_date,discovered_ms,sent_ms) VALUES(?,?,?,?,?,?,NULL)')
+  .run(kind.id, '효성중공업','효성중공업',kind.title,'20261106',now);
+ assert.equal((await runKindCheck(f.env,slot,{now:now+60000,collector:async()=>[kind]})).sent,0);
+ assert.equal((await runKindCheck(f.env,slot,{now:now+DART_PRIORITY_WAIT_MS+60000,collector:async()=>[kind]})).sent,0);
+ assert.equal(f.replies.length,0);
 });
