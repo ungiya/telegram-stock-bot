@@ -614,3 +614,35 @@ test('future-proof multi-company digests from several publishers never generate 
   // Unrelated digest titles in another period or outlet will also be blocked
   // by the general policy rather than hard-coded URL/event keys.
 });
+
+
+
+test('Lunit Learning Unit 2.0 two publisher announcements are removed from D1 queue; real new agreement still sends',async t=>{
+  const f=fixture(t),now=Date.parse('2026-11-06T10:17:00+09:00');
+  t.mock.timers.enable({apis:['Date'],now});
+  f.sql.prepare('INSERT INTO watchlist_overrides(ticker,aliases_json,enabled) VALUES(?,?,1)')
+    .run('루닛',JSON.stringify(['루닛']));
+  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+  insert.run('https://daily.hankooki.com/news/articleView.html?idxno=1422512','루닛',
+    "[루닛] 루닛, 의료 특화 AI '러닝유닛 2.0' 공개",
+    "컨소시엄이 정부 의과학 특화 파운데이션 모델 프로젝트를 완수, 의료 특화 모델 러닝유닛 2.0을 공개했다.",
+    now-8000,now);
+  insert.run('https://www.etoday.co.kr/news/view/2644883','루닛',
+    '[루닛] 루닛, 의료 특화 AI 모델 개발 완료…진료·병원행정 등 의료 현장서 실증',
+    "정부의 국가 전략사업인 '의과학 특화 파운데이션 모델' 프로젝트를 완수했다고 밝혔다.",
+    now-7000,now);
+  insert.run('https://new-business.example/lunit-hospital-contract','루닛',
+    '루닛 새 의료 AI 모델 대학병원 공급 계약 체결',
+    "루닛이 병원과 새 공급 계약을 체결했다고 발표했다.",
+    now-6000,now);
+  const result=await runNewsCheck(f.env,now);
+  assert.equal(result.sent,1,'old foundation model launch is not repeated, actual new deal still alerts');
+  assert.equal(f.replies.length,1);
+  assert.match(f.replies[0].text,/공급 계약/);
+  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='루닛' ORDER BY pub_ms").all();
+  assert.equal(rows.length,3);
+  assert.equal(rows[0].duplicate_of,'event:lunit-learningunit20-foundation-model-launch-2026-11-06');
+  assert.equal(rows[1].duplicate_of,'event:lunit-learningunit20-foundation-model-launch-2026-11-06');
+  assert.equal(rows[2].duplicate_of,null);
+  assert.ok(rows.every(x=>x.sent_ms!==null));
+});
