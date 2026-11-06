@@ -71,3 +71,35 @@ test('status surfaces source failures even after another source succeeds',async 
  const f=fixture(t);await assert.rejects(run(f,2,[],{collector:async()=>{throw Error('KIND HTTP 503');}}));await run(f,3,[]);
  await handleCommand(f.env,{from:{id:111},chat:{id:111,type:'private'}},{name:'status',arg:''});assert.match(f.replies.at(-1).text,/KIND 오류: ipo:01 · KIND HTTP 503/);
 });
+
+
+
+test('KIND does not repeat DART earnings even with another receipt; unrelated filings still send',async t=>{
+ const f=fixture(t),report='연결재무제표기준영업(잠정)실적(공정공시)';
+ await run(f,0,[]); // KIND today baseline.
+ f.sql.prepare('INSERT INTO dart_filings(receipt_no,ticker,company_name,report_name,filed_date,discovered_ms,sent_ms) VALUES(?,?,?,?,?,?,?)')
+   .run('20261102000021','효성중공업','효성중공업',report,'20261102',NOW,NOW);
+ const kind={...disclosure('20261102000022'),title:report};
+ const result=await run(f,0,[kind]);
+ assert.equal(result.sent,0,'KIND must skip DART-delivered earnings across different receipt ids');
+ assert.equal(f.replies.length,0);
+ assert.ok(f.sql.prepare('SELECT sent_ms FROM kind_items WHERE event_key=?').get('disclosure:'+kind.id).sent_ms);
+ assert.equal((await run(f,0,[{...disclosure('20261102000023'),title:'신규 공급 계약 체결'}])).sent,1);
+ assert.match(f.replies[0].text,/신규 공급 계약/);
+});
+
+test('KIND preliminary earnings waits 90 seconds for DART and then sends as fallback only once',async t=>{
+ const f=fixture(t),report='연결재무제표기준영업(잠정)실적(공정공시)';
+ await run(f,0,[]);
+ const kind={...disclosure('20261102000030'),title:report};
+ assert.equal((await run(f,0,[kind])).sent,0,'KIND briefly waits for DART');
+ assert.equal(f.replies.length,0);
+ const later=await runKindCheck(f.env,sourceTime(0),{now:NOW+120000,collector:async()=>[kind]});
+ assert.equal(later.sent,1);
+ assert.equal(f.replies.length,1);
+ assert.match(f.replies[0].text,/KIND 공시/);
+ assert.equal((await runKindCheck(f.env,sourceTime(0),{now:NOW+180000,collector:async()=>[kind]})).sent,0);
+ const claim=f.sql.prepare('SELECT * FROM disclosure_deliveries').get();
+ assert.equal(claim.source,'kind');
+ assert.ok(claim.delivered_ms>0);
+});
