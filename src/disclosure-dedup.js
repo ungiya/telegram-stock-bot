@@ -68,8 +68,14 @@ export async function claimDisclosure(env,key,source,receipt,now) {
   throw error;
  }
  if(row)return {status:'claimed',key,source,receipt};
- const previous=await env.DB.prepare('SELECT delivered_ms FROM disclosure_deliveries WHERE event_key=?')
+ const previous=await env.DB.prepare('SELECT delivered_ms,source,receipt FROM disclosure_deliveries WHERE event_key=?')
   .bind(key).first();
+ // Same-company same-day ownership reports from TWO DIFFERENT shareholders may
+ // have identical titles. Never deduplicate separate receipts from the SAME
+ // source; it is only a cross-provider fingerprint in that case.
+ if(key.startsWith('ownership-5pct:') && previous?.delivered_ms != null &&
+    previous.source===source && previous.receipt!==receipt)
+   return {status:'not_applicable',reason:'same_source_distinct_receipt'};
  return {status:previous?.delivered_ms!==null&&previous?.delivered_ms!==undefined?'duplicate':'busy',key,source,receipt};
 }
 export async function finishDisclosure(env,claim,now) {
