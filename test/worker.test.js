@@ -357,3 +357,33 @@ test('WikiLeaks Korea publisher is globally blocked across Naver ingestion and p
     'https://wikileaks.org/article'
   ])assert.equal(blockedNewsSource(url),false,'unrelated host '+url);
 });
+
+
+test('block iTooza entire publisher domain including subdomains at ingestion and before queued Telegram send',async()=>{
+  const {queuedNewsExcluded}=await import('../src/worker.js');
+  const now=Date.parse('2026-11-09T07:47:00+09:00');
+  for(const url of [
+    'https://itooza.com/newsview/2026110809281234567',
+    'https://www.itooza.com/newsview/2026110809281234567',
+    'https://news.itooza.com/2026110809281234567/100/16',
+    'http://m.itooza.com/newsview/2026110809281234567',
+    'https://NEWS.ITOOZA.COM./newsview/2026110809281234567'
+  ]){
+    assert.equal(blockedNewsSource(url),true,'block source '+url);
+    for(const ticker of ['크래프톤','에이피알','씨어스','파마리서치','서진시스템']){
+      const title=ticker+' 분기 실적 발표';
+      assert.equal(normalizeArticle({
+        title,description:'기업 실적 기사',originallink:url,
+        link:'https://n.news.naver.com/mnews/article/123/789012',
+        pubDate:new Date(now).toUTCString()
+      },ticker,now),null,'ingestion '+ticker+' '+url);
+      assert.equal(queuedNewsExcluded({ticker,title,description:'',url,pub_ms:now}),true,'pending queue '+url);
+    }
+  }
+  for(const url of [
+    'https://notitooza.com/newsview/123',
+    'https://itooza.com.example.org/newsview/123',
+    'https://example.org/path/news.itooza.com/article',
+    'https://otherpublisher.co.kr/article/123'
+  ])assert.equal(blockedNewsSource(url),false,'unrelated publisher '+url);
+});
