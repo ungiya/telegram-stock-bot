@@ -417,3 +417,33 @@ test('block Topstarnews across all tickers at Naver ingestion and before queued 
     'https://otherpublisher.co.kr/article/123'
   ]) assert.equal(blockedNewsSource(url), false, 'unrelated publisher ' + url);
 });
+
+  
+test('block CBC뉴스 (cbci.co.kr) on all tickers at ingestion and pending Telegram send', async () => {
+  const { queuedNewsExcluded } = await import('../src/worker.js');
+  const now = Date.parse('2026-11-10T00:00:00+09:00');
+  for (const url of [
+    'https://www.cbci.co.kr/news/articleView.html?idxno=12345',
+    'http://cbci.co.kr/news/articleView.html?idxno=12345',
+    'https://m.cbci.co.kr/news/articleView.html?idxno=12345',
+    'https://WWW.CBCI.CO.KR./news/articleView.html?idxno=12345'
+  ]) {
+    assert.equal(blockedNewsSource(url), true, url);
+    for (const ticker of ['에이피알', '크래프톤', '씨어스', '파마리서치', '서진시스템']) {
+      const title = ticker + ' 분기 실적 발표';
+      assert.equal(normalizeArticle({
+        title, description: '기업 실적 기사', originallink: url,
+        link: 'https://n.news.naver.com/mnews/article/123/789012',
+        pubDate: new Date(now).toUTCString()
+      }, ticker, now), null, 'ingestion ' + ticker + ' ' + url);
+      assert.equal(queuedNewsExcluded({ ticker, title, description: '기업 실적 기사', url, pub_ms: now }),
+        true, 'queued ' + ticker + ' ' + url);
+    }
+  }
+  for (const url of [
+    'https://not-cbci.co.kr/news/123',
+    'https://cbci.co.kr.example.com/news/123',
+    'https://example.com/path/cbci.co.kr/news/123',
+    'https://otherpublisher.co.kr/article/123'
+  ]) assert.equal(blockedNewsSource(url), false, 'unrelated publisher ' + url);
+});
