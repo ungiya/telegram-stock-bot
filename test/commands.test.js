@@ -728,3 +728,45 @@ test('the three PUBG Steam #1 articles from screenshots do not resend from D1, b
  assert.equal(rows[3].duplicate_of,null);
  assert.ok(rows[3].sent_ms!==null);
 });
+
+
+
+test('Aprilbio screenshot: three same-day strategy angles send only one original; completed deal stays separate',async t=>{
+ const f=fixture(t),now=Date.parse('2026-11-09T16:03:00+09:00');
+ t.mock.timers.enable({apis:['Date'],now});
+ f.sql.prepare('INSERT OR REPLACE INTO watchlist_overrides(ticker,aliases_json,enabled) VALUES(?,?,1)')
+  .run('에이프릴바이오',JSON.stringify(['에이프릴바이오']));
+ const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
+ const articles=[
+  ['https://www.ajunews.com/view/20261109152849898',
+   "[에이프릴바이오] 에이프릴바이오, 4300억 실탄 확보...내년 기술수출로 기업가치 시험대",
+   '차상훈 에이프릴바이오 대표이사가 9일 오후 서울 여의도 콘래드에서 발표하고 있다. 에이프릴바이오가 내년 기술수출 성과를'],
+  ['https://www.mt.co.kr/thebio/2026/11/09/2026110915315361344',
+   "[에이프릴바이오] 에이프릴바이오, '4300억 실탄' R&D 투입...'내년 3종 기술이전 목표'",
+   '에이프릴바이오가 신규 핵심 파이프라인 3종을 공개하고 이를 내년 기술이전하겠다는 목표를 제시했다. 4000억원이 넘는 현금 자산을 토대로 다수 신약을 개발한다.'],
+  ['https://www.ebn.co.kr/news/articleView.html?idxno=1730947',
+   "[에이프릴바이오] [바이오현장] '실탄·우군' 확보한 에이프릴바이오...글로벌 플랫폼 기업 정조준",
+   '에이프릴바이오가 대규모 투자 유치를 발판으로 신약 연구개발(R&D)을 가속하고 글로벌 플랫폼 바이오 기업으로의 도약에 나선다. 신규 투자자인 TKG그룹과 IMM인베스트먼트는 장기 자본 공급을 지원한다.']
+ ];
+ articles.forEach(([url,title,description],i)=>insert.run(url,'에이프릴바이오',title,description,
+   now-5000+i*1000,now));
+ insert.run('https://separate.example.com/new-license','에이프릴바이오',
+   '에이프릴바이오 4300억 실탄 기반 신규 기술수출 계약 체결',
+   '에이프릴바이오가 글로벌 제약사와 새로운 라이선스 계약을 체결했다.',
+   now-1000,now);
+ const first=await runNewsCheck(f.env,now);
+ assert.equal(first.sent,2,'one briefing and one independent executed licensing deal');
+ assert.equal(f.replies.length,2,'the two rewritten briefing articles must not send');
+ assert.match(f.replies[0].text,/기업가치 시험대/);
+ assert.match(f.replies[1].text,/신규 기술수출 계약/);
+ const rows=f.sql.prepare("SELECT title,url,duplicate_of,sent_ms FROM articles WHERE ticker='에이프릴바이오' ORDER BY pub_ms").all();
+ assert.equal(rows.length,4);
+ assert.equal(rows[0].duplicate_of,null);
+ assert.equal(rows[1].duplicate_of,rows[0].url);
+ assert.equal(rows[2].duplicate_of,rows[0].url);
+ assert.equal(rows[3].duplicate_of,null);
+ assert.ok(rows.every(row=>row.sent_ms!==null));
+ const rerun=await runNewsCheck(f.env,now+60000);
+ assert.equal(rerun.sent,0);
+ assert.equal(f.replies.length,2);
+});
