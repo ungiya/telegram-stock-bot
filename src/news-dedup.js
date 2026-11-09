@@ -1,3 +1,4 @@
+import { strategyBriefingRelation } from './strategy-briefing-events.js';
 import { reportedPubgSteamRank, pubgSteamRankRelation } from './game-ranking-events.js';
 import { crossPublisherAnnouncementRelation } from './cross-publisher-announcements.js';
 import { reportedLunitLearningUnit20, learningUnitReleaseRelation } from './foundation-model-events.js';
@@ -233,6 +234,10 @@ export function sameNews(a, b) {
   if(platformLaunch !== null)return platformLaunch;
   const foundation=learningUnitReleaseRelation(a,b);
   if(foundation !== null)return foundation;
+  // Same strategic briefing may be reported as financing, development or
+  // licensing outlook; compare event identity before generic headline flags.
+  const briefing=strategyBriefingRelation(a,b);
+  if(briefing !== null)return briefing;
   const common=commonEventRelation(a,b);
   if(common !== null) return common;
   const at = text(a.title, a.ticker), bt = text(b.title, b.ticker);
