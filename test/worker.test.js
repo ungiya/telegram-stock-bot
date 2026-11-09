@@ -387,3 +387,33 @@ test('block iTooza entire publisher domain including subdomains at ingestion and
     'https://otherpublisher.co.kr/article/123'
   ])assert.equal(blockedNewsSource(url),false,'unrelated publisher '+url);
 });
+
+
+test('block Topstarnews across all tickers at Naver ingestion and before queued Telegram send', async () => {
+  const { queuedNewsExcluded } = await import('../src/worker.js');
+  const now = Date.parse('2026-11-09T18:49:00+09:00');
+  for (const url of [
+    'https://www.topstarnews.net/news/articleView.html?idxno=12345',
+    'http://topstarnews.net/news/articleView.html?idxno=12345',
+    'https://m.topstarnews.net/news/articleView.html?idxno=12345',
+    'https://WWW.TOPSTARNEWS.NET./news/articleView.html?idxno=12345'
+  ]) {
+    assert.equal(blockedNewsSource(url), true, url);
+    for (const ticker of ['에이피알', '크래프톤', '씨어스', '파마리서치', '서진시스템']) {
+      const title = ticker + ' 분기 실적 발표';
+      assert.equal(normalizeArticle({
+        title, description: '기업 실적 기사', originallink: url,
+        link: 'https://n.news.naver.com/mnews/article/123/789012',
+        pubDate: new Date(now).toUTCString()
+      }, ticker, now), null, 'ingestion ' + ticker + ' ' + url);
+      assert.equal(queuedNewsExcluded({ ticker, title, description: '기업 실적 기사', url, pub_ms: now }),
+        true, 'queued ' + ticker + ' ' + url);
+    }
+  }
+  for (const url of [
+    'https://not-topstarnews.net/news/123',
+    'https://topstarnews.net.example.com/news/123',
+    'https://example.com/path/topstarnews.net/news/123',
+    'https://otherpublisher.co.kr/article/123'
+  ]) assert.equal(blockedNewsSource(url), false, 'unrelated publisher ' + url);
+});
