@@ -54,9 +54,20 @@ Workers Production의 Secrets:
 
 기존 Naver API Hub 인증정보를 사용합니다. 일반 네이버 개발자센터 인증정보와 혼동하지 마세요. API 주소는 `https://naverapihub.apigw.ntruss.com/search/v1/news`입니다.
 
-## 동작과 한계
+## 동작과 한계 (2026-11-27 개편)
 
-제목에 종목명·별칭이 포함된 최신순 100건을 확인합니다. 광고·단순 시세·크래프톤 대회 제외 규칙을 적용하고 최근 24시간 기사를 발송합니다. D1에 원문 URL을 기록해 중복 발송을 막고 한 번에 최대 10건을 묶습니다. 첫 검색은 기존 기사 기준선만 기록합니다. 검색 색인과 예약 실행이 지연될 수 있으며 제목·요약만으로 거르는 필터에는 한계가 있습니다. Telegram 전송 직후 DB 저장이 실패하면 드물게 중복될 수 있습니다.
+**뉴스는 "주가에 영향을 줄 만한 것"만, 회사별로 묶어서 보냅니다.** 규칙은 `src/filters.js` 한 곳에 있고 회사·날짜·기사별 예외 규칙은 두지 않습니다.
+
+1. 제목에 종목명·별칭이 있어야 합니다.
+2. 제외: 차단 매체, [포토]·칼럼·인사·부고, 특징주·주가 등락 기사, 목표주가·투자의견 기사(리포트 알림으로 따로 받음), 여러 회사 묶음 브리핑, AI 자동작성 기사.
+3. 제목에 실적·계약/수주·증자/자사주/배당·인수합병/지분·상장·임상/허가/기술이전·공장/증설·소송/제재·대표 교체·신작 출시 같은 **중요 사건 단어**가 있어야 합니다.
+4. 할인·이벤트·봉사·수상·대회 같은 홍보성 단어가 있으면 실적 발표·수주·인수·증자·허가 같은 확실한 사건이 함께 있을 때만 통과합니다.
+
+중복 제거(`src/news-dedup.js`)는 같은 종목의 **최근 36시간 발송 기사**와 비교합니다. 제목 유사도, 공통 핵심 단어, 기사 첫 문단 유사도, 같은 금액, 같은 기간 실적을 봅니다. "해지·철회·정정"처럼 방향이 바뀐 소식은 새 뉴스로 봅니다. 36시간이 지나면 비슷한 주제라도 새 소식으로 봅니다.
+
+지난 뉴스 방지: 발행 3시간이 지난 기사는 새로 받지 않고, 대기열에서 6시간이 지난 기사는 보내지 않고 버립니다(`duplicate_of='stale'`).
+
+메시지: 종목별로 한 메시지에 최대 8건, 제목(링크)·언론사·시각·한 줄 요약. 링크 미리보기는 끕니다.
 
 실행이 겹치면 D1 잠금으로 뒤 실행을 건너뜁니다. 중단된 실행의 잠금은 5분 후 만료됩니다. 명령 재시도 시 변경은 중복 추가되지 않지만, 응답 메시지가 중복되거나 앞선 변경을 확인하는 문구로 바뀔 수 있습니다. `/pause` 전에 이미 대기 중이던 기사는 재개 후 전송될 수 있습니다.
 
@@ -76,16 +87,15 @@ Workers Production의 Secrets:
 기존 `reports_feed.py`, `broker_collect.py`, `report_schedule.py`에서 옮겼습니다.
 
 - 직접 수집: 삼성증권(35건), 하나증권, 미래에셋증권, 한국투자증권(3페이지), NH투자증권(AI Brief 제외), KB증권(최근 14일 목록)
-- 네이버 통합 리포트: 최신 15페이지·최대 300건. 특정 4개 증권사로 한정하지 않으며 목록에서 제공하는 증권사 리포트가 대상입니다.
-- 한국시간 매일 08:00·18:00·23:00부터 수집. UTC Cron은 `0-14 9,14,23 * * *`입니다.
-- 한 번에 한 수집처를 처리하고 몇 분에 나눠 작업합니다. 각 시간대의 처음 15분 동안 수집·상세 조회·발송과 실패 재시도를 처리합니다. 뉴스 Cron과 별도로 실행해 뉴스 검색 요청 예산을 쓰지 않습니다.
+- 한국시간 06:00~23:59 동안 **15분마다** 모든 수집처를 확인합니다. Cron `*/2 * * * *`가 2분마다 실행되며 한 번에 한 수집처를 처리합니다. 00~06시에는 쉬고 아침 첫 확인 때 밀린 리포트를 보냅니다.
+- 네이버 통합 리포트(최신 8페이지·160건)는 국내 대부분 증권사 리포트를 포함합니다. 6개 증권사는 직접 수집해 더 빨리 받고 PDF 주소를 씁니다.
 - 관심 종목은 뉴스와 같은 D1 운영 목록입니다. `/add`와 `/remove`가 양쪽에 적용됩니다. 네이버 목록은 종목명 정확히 일치, 직접 수집 목록은 제목에 종목명·별칭이 있는지 확인합니다.
 - 수집처별 첫 성공은 기존 리포트를 기록만 합니다. 그 이후 발견한 새 리포트부터 발송합니다. 이미 Termux에서 발송했던 기록은 이전하지 않아, 전환 후 첫 기준선을 이렇게 만듭니다.
 - 같은 회사·증권사·날짜·정규화된 제목을 묶어 원문과 네이버 경유 중복 발송을 줄입니다. 제목이 다르면 중복을 완전히 막지는 못합니다.
 - 네이버 상세의 종목 코드를 검증하고 신뢰하는 PDF 주소만 사용합니다. PDF가 없으면 공식 리포트 상세 주소를 보냅니다. 일부 증권사는 로그인·열람 권한이 필요할 수 있습니다.
 - 실패한 수집처는 최소 2분 후 같은 시간대 안에서 재시도합니다. 다른 수집처와 뉴스는 계속합니다. HTTP 503 등 실패를 수집 성공으로 표시하지 않습니다. 수집처 화면/API가 바뀌거나 접속이 차단되면 수정이 필요합니다.
 - `/status`에서 일정과 최근 수집 경로 수·발송/대기 수를 확인합니다. `리포트 수집 7/7 경로`는 6개 증권사와 네이버 목록을 의미하며 7개 증권사를 의미하지 않습니다.
-- 외부 요청은 리포트 호출당 최대 40회, 발송은 최대 6건으로 제한합니다. 대량 대기 자료는 뒤 호출 또는 다음 시간대로 넘어갈 수 있습니다. 15분 창 밖에서는 리포트를 발송하지 않습니다.
+- 외부 요청은 리포트 호출당 최대 40회, 발송은 최대 6건으로 제한합니다. 대량 대기 자료는 다음 호출로 넘어갑니다.
 - 실제 Cloudflare CPU 한도·원격 수집 성공 여부와 Telegram 리포트 수신은 배포 후 로그로 확인해야 합니다. 무료 운영을 목표로 하며 유료 플랜으로 전환하지 않습니다.
 
 ## DART 공시 알림
@@ -111,12 +121,16 @@ Workers Production의 Secrets:
 
 - `src/kind.js`와 `0008_kind.sql`: KIND 공식 목록을 POST 조회하며 별도 API 키가 필요하지 않습니다.
 - 관심종목 공시는 `/add`, `/remove`와 연동합니다. 예비심사는 관심종목과 무관하게 전체 기업의 **청구서접수, 심사승인, 심사철회**를 확인합니다. 공모철회/상장철회는 다른 상태이며 포함하지 않습니다.
-- 독립 Cron `*/1 * * * *`가 당일 공시, 전일 공시, 청구서접수, 심사승인, 심사철회를 순환합니다. 각 목록은 약 5분마다 조회합니다. 첫 정상 조회는 과거 데이터를 알림 없이 기록하며, 이후 발견한 건부터 발송합니다. IPO 날짜 조회 범위는 최근 2일이며 장기 장애 기간은 자동 복구하지 않습니다.
+- 독립 Cron `*/1 * * * *`가 짝수 분마다 당일 공시(약 2분 간격)를, 홀수 분에는 전일 공시·청구서접수·심사승인·심사철회를 돌아가며 조회합니다. DART에 같은 공시가 없으면 5분 기다린 뒤 KIND 내용으로 먼저 알립니다. 첫 정상 조회는 과거 데이터를 알림 없이 기록하며, 이후 발견한 건부터 발송합니다. IPO 날짜 조회 범위는 최근 2일이며 장기 장애 기간은 자동 복구하지 않습니다.
 - 접수번호와 상태/결과일로 KIND 내부 중복을 방지합니다. DART와 동일한 접수번호가 이미 발송된 경우 KIND 발송을 생략하지만, 양 시스템의 서로 다른 번호까지 의미적으로 병합하지는 않습니다.
 - `/pause`와 `/resume`은 KIND에도 적용됩니다. `/status`에 최근 KIND 처리 결과와 소스별 오류가 표시됩니다.
 - 한 번에 최대 10페이지(페이지당 100건)를 확인합니다. 초과, HTTP 오류, 목록 형식 변경은 오류로 표시하며 부분 결과를 정상 완료로 처리하지 않습니다. 발송 완료 기록은 30일 보관합니다.
 - 실제 KIND HTML 표본과 SQLite 기반 회귀 테스트를 포함합니다. 배포 성공과 Cloudflare에서의 실제 수집/텔레그램 전달 성공은 별도 확인이 필요합니다.
 
-## Durable news delivery and duplicate protection
+## 중복 발송 방지
 
-News delivery now has an independent, renewable lock and a `news_delivery` ledger (migration 0009). Successful/previously handled representatives remain searchable for 30 days independently of the seven-day article cache. History is paginated per company; exceeding the safety budget holds delivery with an error instead of silently ignoring old history. A send attempt is reserved before contacting Telegram. Explicit `ok:false` replies remain retryable. Timeouts, malformed replies, or database failure after Telegram acceptance leave the attempt held rather than automatically resending a potentially delivered message. `/status` reports uncertain/stale attempts and the latest duplicate-suppression count; logs contain the matched public article URLs. Held attempts require investigation; they are not evidence of successful delivery. This favors avoiding duplicates over retrying ambiguous sends. It does not coordinate with separately running Termux bots or other deployments using another database.
+뉴스 발송은 별도 잠금과 `news_delivery` 기록을 씁니다. Telegram에 보내기 전에 기록을 먼저 잡고, 시간 초과처럼 결과가 불확실하면 자동 재전송하지 않습니다(중복 방지 우선). 명확한 실패(`ok:false`)만 다음 실행에서 다시 보냅니다. 발송 기록은 14일 보관합니다.
+
+## 테스트
+
+`npm test`는 `scripts/run-tests.mjs`로 모든 테스트를 한 프로세스에서 실행합니다. Node 테스트 러너가 가끔 `Unable to deserialize cloned data` 오류로 무작위 실패해 배포를 막던 문제를 피합니다.

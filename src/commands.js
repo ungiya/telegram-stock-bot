@@ -1,5 +1,4 @@
 import { NEWS_POLICY_VERSION } from './news-policy-version.js';
-import { publisherStatistics,formatPublisherStatistics } from './publishers.js';
 import { newsPlan } from './news-schedule.js';
 import { ALIASES } from './watchlist.js';
 import { norm } from './filters.js';
@@ -36,7 +35,7 @@ export async function liveWatchlist(env) {
 }
 
 export function parseCommand(text) {
-  const match = String(text || '').trim().match(/^\/?(list|add|remove|status|publishers|언론사|pause|resume|start|help)(?:@[A-Za-z0-9_]+)?(?:\s+([\s\S]*))?$/i);
+  const match = String(text || '').trim().match(/^\/?(list|add|remove|status|pause|resume|start|help)(?:@[A-Za-z0-9_]+)?(?:\s+([\s\S]*))?$/i);
   return match ? { name: match[1].toLowerCase(), arg: (match[2] || '').trim() } : null;
 }
 
@@ -57,7 +56,7 @@ export async function authorized(env, message) {
   }
 }
 
-const help = '클라우드 뉴스봇\n/list 목록\n/add 회사명\n/remove 회사명\n/status 상태\n/publishers [페이지] 최근 7일 언론사별 수집 통계\n/pause 뉴스·리포트·공시·예비심사 전송 정지\n/resume 재개\n명령은 매분 확인하므로 응답까지 약 1분 걸릴 수 있습니다.';
+const help = '클라우드 뉴스봇 (중요 뉴스·공시·리포트)\n/list 목록\n/add 회사명\n/remove 회사명\n/status 상태\n/pause 뉴스·리포트·공시·예비심사 전송 정지\n/resume 재개\n명령은 매분 확인하므로 응답까지 약 1분 걸릴 수 있습니다.';
 
 export async function handleCommand(env, message, command) {
   if (!await authorized(env, message)) return;
@@ -65,20 +64,6 @@ export async function handleCommand(env, message, command) {
   let reply;
   if (command.name === 'list') {
     reply = '클라우드 관심 종목 ' + companies.size + '개\n' + [...companies.keys()].join('\n');
-  } else if (command.name === 'publishers' || command.name === '언론사') {
-    const requested = command.arg || '1';
-    if (!/^[1-9]\d{0,2}$/.test(requested)) {
-      reply = '사용법: /publishers 또는 /publishers 2 (1~999페이지)';
-    } else {
-      try {
-        const result = await publisherStatistics(env,Date.now(),Number(requested));
-        reply = Number(requested)>result.pages
-          ? '해당 페이지가 없습니다. 전체 '+result.pages+'페이지입니다.'
-          : formatPublisherStatistics(result);
-      } catch {
-        reply = '언론사별 통계 DB가 아직 준비되지 않았습니다. Cloudflare D1에 0011_news_publishers.sql 마이그레이션을 적용해야 합니다.';
-      }
-    }
   } else if (command.name === 'status') {
     const state = await env.DB.prepare('SELECT * FROM bot_runtime WHERE id = 1').first();
     reply = '클라우드 실행 중 · 뉴스 검색 주기 ' + newsPlan(companies).minutes + '분 (자동)\n종목: ' + companies.size + '개\n뉴스 전송: ' + (state.paused ? '일시정지' : '켜짐');
@@ -89,7 +74,7 @@ export async function handleCommand(env, message, command) {
     const held = await env.DB.prepare("SELECT count(*) AS n FROM news_delivery WHERE state='uncertain' OR (state='attempting' AND attempt_ms<?)").bind(Date.now()-300000).first();
     if (held?.n) reply += '\n뉴스 전송 확인 불가: ' + held.n + '건 · 중복 방지를 위해 자동 재전송 보류';
     const reports = await env.DB.prepare('SELECT last_summary FROM report_runtime WHERE id = 1').first();
-    reply += '\n리포트: 매일 08:00 / 18:00 / 23:00 (한국시간)부터 수집\n' + (reports?.last_summary || '첫 수집 대기 중');
+    reply += '\n리포트: 06~24시 15분마다 수집\n' + (reports?.last_summary || '첫 수집 대기 중');
     const kind = await env.DB.prepare('SELECT last_summary FROM kind_runtime WHERE id = 1').first();
     reply += '\nKIND 공시·예비심사: ' + (kind?.last_summary || '첫 확인 대기 중');
     const kindErrors = (await env.DB.prepare('SELECT source,last_error FROM kind_sources WHERE last_error IS NOT NULL').all()).results || [];

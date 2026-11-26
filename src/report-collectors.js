@@ -120,7 +120,7 @@ export const REPORT_SOURCES = ['naver', 'samsung', 'hana', 'mirae', 'korea', 'nh
 export async function collectSource(source, request, now = Date.now()) {
   let rows = [];
   if (source === 'naver') {
-    for (let index = 0; index < 15; index++) {
+    for (let index = 0; index < 8; index++) {
       const data = await request(NAVER + '?size=20&index=' + index, { json: true, headers: { Referer: 'https://stock.naver.com/research/company' } });
       if (!Array.isArray(data.items) || (!index && !data.items.length)) throw Error('Invalid Naver report list');
       for (const x of data.items) {

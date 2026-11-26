@@ -5,7 +5,7 @@
   "scripts": {
     "deploy": "npm run db:migrate && wrangler deploy",
     "db:migrate": "wrangler d1 migrations apply telegram-stock-news-db --remote",
-    "test": "node --test"
+    "test": "node scripts/run-tests.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

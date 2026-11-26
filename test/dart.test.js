@@ -296,7 +296,7 @@ test('DART earnings after KIND stale or active claim is safely retried and never
 
 
 test('Nov 6 DART first: two companies each send one detailed ownership filing; KIND copies stay silent',async t=>{
- const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
+ const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/120000)*120000;
  const report='주식등의대량보유상황보고서(약식)';
  const filings=[
   {corp_name:'서진시스템',rcept_no:'20261106000359',rcept_dt:'20261106',report_nm:report},
@@ -328,8 +328,8 @@ test('Nov 6 DART first: two companies each send one detailed ownership filing; K
  assert.match(f.replies.at(-1).text,/기재정정/);
 });
 
-test('Nov 6 KIND-only fallback after 30-minute DART priority window; very late DART copies stay silent',async t=>{
- const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
+test('Nov 6 KIND-only fallback after the DART priority window; very late DART copies stay silent',async t=>{
+ const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/120000)*120000;
  const report='주식등의대량보유상황보고서(약식)';
  const kind=[
   {id:'20261106000804',company:'서진시스템',title:report,eventDate:'2026-11-06',
@@ -358,7 +358,7 @@ test('Nov 6 KIND-only fallback after 30-minute DART priority window; very late D
 
 
 test('KIND discovered before DART: queued matching DART has permanent priority, even past KIND fallback timeout',async t=>{
- const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
+ const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/120000)*120000;
  const report='주식등의대량보유상황보고서(약식)';
  const filings=[
   {corp_name:'서진시스템',rcept_no:'20261106000359',rcept_dt:'20261106',report_nm:report},
@@ -394,7 +394,7 @@ test('KIND discovered before DART: queued matching DART has permanent priority, 
 });
 
 test('KIND waits for any pending DART receipt, including non-shared reports',async t=>{
- const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
+ const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/120000)*120000;
  await runKindCheck(f.env,slot,{now,collector:async()=>[]});
  const kind={id:'20261106000077',company:'효성중공업',title:'단일판매ㆍ공급계약체결',
   eventDate:'2026-11-06',url:'https://kind.krx.co.kr/disclosure/77'};
@@ -408,7 +408,7 @@ test('KIND waits for any pending DART receipt, including non-shared reports',asy
 
 
 test('ordinary supply-contract disclosure: KIND first, DART later with different receipt, only DART alerts',async t=>{
- const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/300000)*300000;
+ const f=fixture(t),now=Date.parse('2026-11-06T07:25:00Z'),slot=Math.floor(now/120000)*120000;
  const report='단일판매ㆍ공급계약체결';
  const kind={id:'20261106000881',company:'효성중공업',title:report,eventDate:'2026-11-06',
    url:'https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261106000881'};
