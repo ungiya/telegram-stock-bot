@@ -3,11 +3,14 @@ import { liveWatchlist, telegram } from './commands.js';
 import { REPORT_SOURCES, collectSource, reportDetail, requestBudget } from './report-collectors.js';
 
 // Report processing has its own invocation/lock so it cannot spend the news tick's requests.
-export const REPORT_CRON = '0-14 9,14,23 * * *';
+export const REPORT_CRON = '*/2 * * * *';
+// 한국시간 06:00~23:59, 15분마다 한 번씩 모든 수집처를 확인한다.
+// 2분마다 실행되며 한 번에 수집처 1곳씩 처리한다 (7곳 → 약 14분).
 export function reportSlot(scheduledAt) {
   const kst = new Date(scheduledAt + 9 * 3600000);
-  return [8, 18, 23].includes(kst.getUTCHours()) && kst.getUTCMinutes() < 15
-    ? kst.toISOString().slice(0, 10) + ':' + kst.getUTCHours() : null;
+  const hour = kst.getUTCHours();
+  if (hour < 6) return null;
+  return kst.toISOString().slice(0, 10) + ':' + hour + ':' + Math.floor(kst.getUTCMinutes() / 15);
 }
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function matchReport(item, companies, exact = false) {
@@ -38,10 +41,8 @@ export async function reportSignature(company, item) {
   return hash(norm(company) + '|' + norm(item.broker || '') + '|' + item.date + '|' + norm(title));
 }
 export function reportMessage(company, item) {
-  let body = '[증권사 리포트] ' + company + '\n' + String(item.title).slice(0, 800) + '\n' + item.broker + ' | ' + item.date + '\n';
-  if (item.opinion) body += '투자의견: ' + item.opinion + '\n';
-  if (item.goalPrice) body += '목표주가: ' + item.goalPrice + '원\n';
-  return body + item.url;
+  const facts = [item.broker, item.opinion && '의견 ' + item.opinion, item.goalPrice && '목표가 ' + item.goalPrice + '원', item.date].filter(Boolean).join(' · ');
+  return '[리포트] ' + company + '\n' + String(item.title).slice(0, 300) + '\n' + facts + '\n' + item.url;
 }
 async function batch(env, statements) {
   for (let i = 0; i < statements.length; i += 50) await env.DB.batch(statements.slice(i, i + 50));
@@ -100,7 +101,7 @@ export async function sendReportAlerts(env, now = Date.now()) {
   for (const row of rows.results || []) {
     if (companies.has(row.ticker)) {
       if (sent) await new Promise(resolve => setTimeout(resolve, 1100));
-      await telegram(env, 'sendMessage', { chat_id: env.TELEGRAM_CHAT_ID, text: row.body.slice(0, 4000), link_preview_options: { is_disabled: false, url: row.url } });
+      await telegram(env, 'sendMessage', { chat_id: env.TELEGRAM_CHAT_ID, text: row.body.slice(0, 4000), link_preview_options: { is_disabled: true } });
       sent++;
     }
     await env.DB.prepare('UPDATE report_alerts SET sent_ms = ? WHERE signature = ?').bind(now, row.signature).run();

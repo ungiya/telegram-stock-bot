@@ -9,7 +9,7 @@ const DISC = '/disclosure/todaydisclosure.do';
 const statuses = { '01': '청구서접수', '02': '심사승인', '04': '심사철회' };
 // Prefer DART's detailed official filing over a matching KIND headline.
 // KIND-only disclosures remain available after a bounded fallback window.
-export const DART_PRIORITY_WAIT_MS = 30 * 60_000;
+export const DART_PRIORITY_WAIT_MS = 5 * 60_000;
 const clean = value => String(value || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ')
   .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
 const date = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -93,7 +93,9 @@ export function kindMessage(item) {
 }
 
 export async function runKindCheck(env, scheduledAt = Date.now(), options = {}) {
-  const source = ['today', 'previous', 'ipo:01', 'ipo:02', 'ipo:04'][Math.floor(scheduledAt / 60000) % 5];
+  // 당일 공시는 2분 중 1번(짝수 분), 나머지 목록은 홀수 분에 돌아가며 확인
+  const minute = Math.floor(scheduledAt / 60000);
+  const source = minute % 2 === 0 ? 'today' : ['previous', 'ipo:01', 'ipo:02', 'ipo:04'][Math.floor(minute / 2) % 4];
   const now = options.now ?? Date.now(), owner = crypto.randomUUID();
   const lock = await env.DB.prepare('UPDATE kind_runtime SET lock_owner=?, lock_until_ms=? WHERE id=1 AND lock_until_ms < ? RETURNING id')
     .bind(owner, now + 240000, now).first();
@@ -174,7 +176,7 @@ export async function runKindCheck(env, scheduledAt = Date.now(), options = {}) 
       if (!alreadySent) {
         try {
           if (sent) await new Promise(r=>setTimeout(r,1100));
-          await telegram(env,'sendMessage',{chat_id:env.TELEGRAM_CHAT_ID,text:item.body,link_preview_options:{is_disabled:false}});
+          await telegram(env,'sendMessage',{chat_id:env.TELEGRAM_CHAT_ID,text:item.body,link_preview_options:{is_disabled:true}});
           await finishDisclosure(env,claim,now);
           sent++;
         } catch(error) {

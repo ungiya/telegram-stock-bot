@@ -5,7 +5,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {parseKind,collectKind,runKindCheck,kindMessage,KIND_CRON,DART_PRIORITY_WAIT_MS} from '../src/kind.js';
 import {handleCommand} from '../src/commands.js';
 const NOW=Date.parse('2026-11-02T01:00:00Z');
-const sourceTime = i => (Math.floor(NOW/300000)*5+i)*60000;
+const sourceTime = i => { const base = Math.floor(NOW/480000)*8; return (i === 0 ? base : base + 2*(i-1) + 1)*60000; };
 const html=name=>readFileSync(new URL('./fixtures/'+name+'.html',import.meta.url),'utf8');
 const item=(id,status='청구서접수')=>({id,company:'미등록신규기업',status,filed:'2026-11-02',eventDate:'2026-11-02',market:'코스닥',listing:'신규상장',url:'https://kind.krx.co.kr/'});
 const disclosure=id=>({id,company:'효성중공업',title:'공급계약',eventDate:'2026-11-02',url:'https://kind.krx.co.kr/'});

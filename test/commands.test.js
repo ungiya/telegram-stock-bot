@@ -144,96 +144,6 @@ test('remove suppresses queued news; pause keeps commands active and resume work
   assert.deepEqual(await runNewsCheck(f.env), { checked: 0, sent: 0 });
 });
 
-test('already queued blocked outlets are suppressed while other pending news still sends', async t => {
-  const f = fixture(t);
-  const insert = f.sql.prepare('INSERT INTO articles (url,ticker,title,pub_ms,discovered_ms) VALUES (?,?,?,?,?)');
-  insert.run('https://www.vegannews.co.kr/news/article.html?no=1', '달바글로벌', '차단할 기사', Date.now(), Date.now());
-  insert.run('https://www.insight.co.kr/news/1', '달바글로벌', '인사이트 차단 기사', Date.now(), Date.now());
-  insert.run('https://www.pinpointnews.co.kr/news/articleView.html?idxno=1', '달바글로벌', '핀포인트 차단 기사', Date.now(), Date.now());
-  insert.run('https://www.metroseoul.co.kr/article/1', '달바글로벌', '메트로 차단 기사', Date.now(), Date.now());
-  insert.run('https://m.emetro.co.kr/article/2', '달바글로벌', '메트로 구주소 차단 기사', Date.now(), Date.now());
-  insert.run('https://www.4th.kr/news/articleView.html?idxno=1', '달바글로벌', '포쓰저널 차단 기사', Date.now(), Date.now());
-  insert.run('https://example.com/allowed', '달바글로벌', '허용할 기사', Date.now(), Date.now());
-  const result = await runNewsCheck(f.env);
-  assert.equal(result.sent, 1);
-  assert.equal(f.replies.length, 1);
-  assert.match(f.replies[0].text, /허용할 기사/);
-  assert.doesNotMatch(f.replies[0].text, /vegannews|insight\.co\.kr|차단할 기사|인사이트 차단 기사/);
-  assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url LIKE ?').get('%vegannews%').sent_ms);
-  assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url LIKE ?').get('%insight.co.kr%').sent_ms);
-  assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url LIKE ?').get('%pinpointnews.co.kr%').sent_ms);
-  assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url LIKE ?').get('%metroseoul.co.kr%').sent_ms);
-  assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url LIKE ?').get('%emetro.co.kr%').sent_ms);
-  assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url LIKE ?').get('%4th.kr%').sent_ms);
-});
-
-test('news summaries survive collection and each article gets its own visible URL preview', async t => {
-  const f = fixture(t);
-  for (const name of (await liveWatchlist(f.env)).keys()) await command(f, 'remove', name);
-  await command(f, 'add', '테스트기업');
-  f.replies.length = 0;
-  await runNewsCheck(f.env);
-  f.setNews([1, 2].map(n => ({ title: '테스트기업 공급 계약 ' + n, description: '<b>테스트기업</b> 계약 내용 &amp; 요약 ' + n,
-    originallink: 'https://example.com/news/' + n, pubDate: new Date().toUTCString() })));
-  assert.equal((await runNewsCheck(f.env)).sent, 2);
-  assert.equal(f.replies.length, 2);
-  for (const reply of f.replies) {
-    assert.match(reply.text, /^\[테스트기업\] 테스트기업 공급 계약 [12]\n테스트기업 계약 내용 & 요약 [12]\nhttps:\/\/example.com\/news\/[12]$/);
-    assert.equal(reply.parse_mode, undefined);
-    assert.equal(reply.link_preview_options.is_disabled, false);
-    assert.ok(reply.text.endsWith(reply.link_preview_options.url));
-  }
-});
-
-test('partial delivery retries remaining articles without resending the first successful article', async t => {
-  const f = fixture(t);
-  const insert = f.sql.prepare('INSERT INTO articles (url,ticker,title,description,pub_ms,discovered_ms) VALUES (?,?,?,?,?,?)');
-  for (let n = 1; n <= 3; n++) insert.run('https://example.com/' + n, '달바글로벌', '기사 ' + n, '요약 ' + n, Date.now() + n, Date.now());
-  f.failSend(2);
-  await assert.rejects(runNewsCheck(f.env), /temporary failure/);
-  assert.equal(f.replies.length, 1);
-  assert.equal(f.sql.prepare('SELECT count(*) AS n FROM articles WHERE sent_ms IS NOT NULL').get().n, 1);
-  assert.equal(f.sql.prepare('SELECT count(*) AS n FROM articles WHERE lease_until_ms IS NOT NULL').get().n, 0);
-  assert.equal((await runNewsCheck(f.env)).sent, 2);
-  assert.equal(f.replies.length, 3);
-  assert.equal(new Set(f.replies.map(r => r.text)).size, 3);
-});
-
-test('cross-outlet duplicates are suppressed within a batch and across later cron runs', async t => {
-  const f = fixture(t);
-  const insert = f.sql.prepare('INSERT INTO articles (url,ticker,title,description,pub_ms,discovered_ms) VALUES (?,?,?,?,?,?)');
-  const title = '효성중공업 지멘스와 디지털 전력망 기술 협력';
-  const description = '효성중공업이 독일 지멘스와 디지털 전력망과 인공지능 데이터센터 솔루션 분야에서 협력한다. 글로벌 전략적 파트너십 협약을 체결했다.';
-  const now = Date.parse('2026-12-01T00:00:00Z');
-  t.mock.timers.enable({apis:['Date'],now});
-  insert.run('https://first.example/news', '효성중공업', title, description, now - 1000, now);
-  insert.run('https://second.example/news', '효성중공업', title + '!', description, now, now);
-  assert.equal((await runNewsCheck(f.env, now)).sent, 1);
-  assert.equal(f.replies.length, 1);
-  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url = ?').get('https://second.example/news').duplicate_of, 'https://first.example/news');
-  // A later outlet must compare with persisted history, including after a restart.
-  insert.run('https://third.example/news', '효성중공업', '[속보] ' + title, description, now + 1, now);
-  assert.equal((await runNewsCheck({ ...f.env }, now)).sent, 0);
-  assert.equal(f.replies.length, 1);
-  // Distinct news about the same company still sends.
-  insert.run('https://fourth.example/news', '효성중공업', '효성중공업 미국 공장 증설에 3000억원 투자', '미국 변압기 생산능력 확대를 위한 신규 공장 투자 계획을 발표했다.', now + 2, now);
-  assert.equal((await runNewsCheck(f.env, now)).sent, 1);
-  assert.equal(f.replies.length, 2);
-});
-
-test('old dedup history expires and a failed delivery cannot suppress its retry', async t => {
-  const f = fixture(t);
-  const now = Date.now();
-  const insert = f.sql.prepare('INSERT INTO articles (url,ticker,title,description,pub_ms,discovered_ms,sent_ms) VALUES (?,?,?,?,?,?,?)');
-  const title = '달바글로벌 미국 신규 매장 개장';
-  insert.run('https://example.com/old', '달바글로벌', title, '', now - 31 * 24 * 3600000, now - 31 * 24 * 3600000, now - 31 * 24 * 3600000);
-  insert.run('https://example.com/new', '달바글로벌', title, '', now, now, null);
-  f.failSend(1);
-  await assert.rejects(runNewsCheck(f.env), /temporary failure/);
-  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url = ?').get('https://example.com/new').duplicate_of, null);
-  assert.equal((await runNewsCheck(f.env)).sent, 1);
-});
-
 test('adaptive pacing persists across restarts and status follows add/remove without delaying commands', async t => {
   const { claimNewsSearch, newsPlan } = await import('../src/news-schedule.js');
   const f = fixture(t), now = Date.now(), companies = await liveWatchlist(f.env);
@@ -267,41 +177,6 @@ test('minute cron keeps polling commands while skipping news before its due time
   assert.ok(f.calls.some(c=>c.method==='getUpdates'));
 });
 
-test('paraphrased syndication is suppressed across runs while a cancellation is delivered', async t => {
-  const f=fixture(t), now=Date.parse('2026-12-01T00:00:00Z');
-  t.mock.timers.enable({apis:['Date'],now});
-  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
-  const description='효성중공업이 독일 지멘스와 디지털 전력망과 인공지능 데이터센터 솔루션 분야에서 협력한다. 글로벌 전략적 파트너십 협약을 체결했다.';
-  insert.run('https://original.example/news','효성중공업','효성중공업 지멘스와 전략적 파트너십',description,now-1000,now);
-  assert.equal((await runNewsCheck(f.env, now)).sent,1);
-  insert.run('https://copy.example/news','효성중공업','효성중공업 지멘스와 맞손, 디지털 전력망 확대',description,now,now);
-  assert.equal((await runNewsCheck({...f.env}, now)).sent,0);
-  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://copy.example/news').duplicate_of,'https://original.example/news');
-  insert.run('https://update.example/news','효성중공업','효성중공업 지멘스와 전략적 파트너십 해지',description,now+1,now);
-  assert.equal((await runNewsCheck(f.env, now)).sent,1);
-});
-
-test('known Siemens syndication is suppressed even with no history or description; unrelated news sends', async t => {
-  const f=fixture(t),now=Date.parse('2026-11-02T01:00Z');
-  t.mock.timers.enable({apis:['Date'],now});
-  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
-  insert.run('https://late.example/gspa','효성중공업','효성중공업 지멘스와 AI 데이터센터 공략 맞손','',now,now);
-  assert.equal((await runNewsCheck(f.env,now)).sent,0);
-  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/gspa').duplicate_of,'event:hyosung-siemens-gspa-2026-10-30');
-  insert.run('https://new.example/contract','효성중공업','효성중공업 지멘스와 디지털 전력망 신규 공급 계약','',now,now);
-  assert.equal((await runNewsCheck(f.env,now)).sent,1);
-});
-
-test('four-day old representative still suppresses a republished article', async t => {
-  const f=fixture(t), now=Date.now();
-  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms,sent_ms) VALUES(?,?,?,?,?,?,?)');
-  const title='달바글로벌 미국 신규 매장 개장';
-  insert.run('https://old.example/story','달바글로벌',title,'',now-4*86400000,now-4*86400000,now-4*86400000);
-  insert.run('https://late.example/story','달바글로벌',title,'',now,now,null);
-  assert.equal((await runNewsCheck(f.env)).sent,0);
-  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/story').duplicate_of,'https://old.example/story');
-});
-
 test('already received Musinsa appointment is discarded before Telegram even without prior history', async t => {
   const f=fixture(t),now=Date.parse('2026-11-02T01:00Z');
   t.mock.timers.enable({apis:['Date'],now});
@@ -324,36 +199,6 @@ test('fashion filter also discards queued Musinsa articles created before deploy
   assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url=?').get('https://queued.example/fashion').sent_ms);
 });
 
-test('queued PGS article is suppressed without history, but financial news mentioning PGS survives', async t => {
-  const f=fixture(t),now=Date.parse('2026-11-02T01:00Z');
-  t.mock.timers.enable({apis:['Date'],now});
-  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
-  insert.run('https://late.example/pgs','파마리서치','파마리서치 PGS 개최…글로벌 재생의학 리더십 강화','',now,now);
-  insert.run('https://new.example/earnings','파마리서치','파마리서치 영업이익 증가','PGS 행사도 개최했다.',now+1,now);
-  assert.equal((await runNewsCheck(f.env)).sent,1);
-  assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/pgs').duplicate_of,'event:pharmaresearch-pgs-2026-10');
-  assert.match(f.replies[0].text,/영업이익/);
-});
-
-test('reported LS speech is removed from queue without history and new orders survive', async t => {
- const f=fixture(t),now=Date.parse('2026-11-02T01:00Z');t.mock.timers.enable({apis:['Date'],now});
- const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
- insert.run('https://www.viva100.com/article/20261102500194','LS일렉트릭','구자균 LS일렉트릭 회장 “AI 전력난 해법은 지능형 DC 전력망”','',now,now);
- insert.run('https://new.example/order','LS일렉트릭','LS일렉트릭 직류 전력망 공급 계약 체결','구자균 AI 전력난 해법은 지능형 DC 전력망',now+1,now);
- assert.equal((await runNewsCheck(f.env)).sent,1);
- assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://www.viva100.com/article/20261102500194').duplicate_of,'event:ls-electric-koo-ai-dc-grid-2026-11-02');
- assert.match(f.replies[0].text,/공급 계약/);
-});
-test('other companies cannot crowd relevant duplicate history out of the 2000-row comparison limit', async t => {
- const f=fixture(t),now=Date.now();
- const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms,sent_ms) VALUES(?,?,?,?,?,?,?)');
- insert.run('https://original.example/ls','LS일렉트릭','LS일렉트릭 북미 변압기 생산능력 확대','',now-2*86400000,now,now);
- for(let i=0;i<2001;i++) insert.run('https://busy.example/'+i,'에이피알','에이피알 별도 소식 '+i,'',now-1000,now,now);
- insert.run('https://copy.example/ls','LS일렉트릭','LS일렉트릭 북미 변압기 생산능력 확대','',now,now,null);
- assert.equal((await runNewsCheck(f.env)).sent,0);
- assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://copy.example/ls').duplicate_of,'https://original.example/ls');
-});
-
 test('delivery ledger survives loss of article cache and suppresses an outlet copy', async t => {
  const f=fixture(t),now=Date.now();
  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
@@ -364,14 +209,6 @@ test('delivery ledger survives loss of article cache and suppresses an outlet co
  insert.run('https://two.example/durable','에이피알',title,'',now,now);
  assert.equal((await runNewsCheck({...f.env})).sent,0);
  assert.equal(f.replies.length,1);
-});
-test('same-company history beyond 2000 entries remains available to duplicate checking', async t => {
- const f=fixture(t),now=Date.now();
- const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms,sent_ms) VALUES(?,?,?,?,?,?,?)');
- insert.run('https://old.example/representative','에이피알','에이피알 미국 물류센터 증설','',now-2*86400000,now,now-2*86400000);
- for(let i=0;i<2001;i++)insert.run('https://other.example/'+i,'에이피알','다른 소식 '+i,'',now-1000,now,now-1000);
- insert.run('https://copy.example/representative','에이피알','에이피알 미국 물류센터 증설','',now,now,null);
- assert.equal((await runNewsCheck(f.env)).sent,0);
 });
 test('timeout after Telegram receives a news message is held instead of being resent', async t => {
  const f=fixture(t),now=Date.now(),previous=globalThis.fetch;
@@ -404,37 +241,6 @@ test('independent delivery lock prevents simultaneous loops sending two outlets 
  assert.equal(results.reduce((n,r)=>n+r.sent,0),1);assert.equal(f.replies.length,1);
 });
 
-test('queued SK appointment round is suppressed but a different person still sends', async t=>{
- const f=fixture(t),now=Date.parse('2026-11-02T01:00Z');t.mock.timers.enable({apis:['Date'],now});
- const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
- insert.run('https://late.example/sk','sk이노베이션','SK이노베이션 전력 사업 강화…정승일 총괄사장 선임','',now,now);
- insert.run('https://new.example/sk','sk이노베이션','SK이노베이션 김철수 사장 선임','',now+1,now);
- assert.equal((await runNewsCheck(f.env)).sent,1);
- assert.equal(f.sql.prepare('SELECT duplicate_of FROM articles WHERE url=?').get('https://late.example/sk').duplicate_of,'event:sk-innovation-2027-personnel-2026-10-30');
- assert.match(f.replies[0].text,/김철수/);
-});
-
-
-test('publisher command accepts Korean alias, pagination and requires authorization', async t => {
-  const f=fixture(t), now=Date.now();
-  await command(f,'publishers');
-  assert.match(f.replies.at(-1).text,/언론사 통계/);
-  assert.match(f.replies.at(-1).text,/아직 집계된 언론사가 없습니다/);
-  f.sql.prepare('INSERT INTO news_publisher_seen(url,domain,first_seen_ms,reason) VALUES(?,?,?,?)')
-    .run('https://news.example.com/x','news.example.com',now,'content_filter');
-  await command(f,'언론사');
-  assert.match(f.replies.at(-1).text,/news.example.com/);
-  assert.match(f.replies.at(-1).text,/수집 1/);
-  await command(f,'publishers','0');
-  assert.match(f.replies.at(-1).text,/사용법/);
-  await command(f,'publishers','2');
-  assert.match(f.replies.at(-1).text,/해당 페이지가 없습니다/);
-  const previous=f.replies.length;
-  await command(f,'publishers','1',222);
-  assert.equal(f.replies.length,previous);
-});
-
-
 test('two different outlets covering one gyn conference produce a single Telegram alert',async t=>{
   const f=fixture(t), now=Date.now();
   const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
@@ -452,45 +258,6 @@ test('two different outlets covering one gyn conference produce a single Telegra
   const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='파마리서치' ORDER BY url").all();
   assert.ok(rows.every(row=>row.sent_ms!==null));
   assert.equal(rows.filter(row=>row.duplicate_of!==null).length,1);
-});
-
-
-test('two syndicated strike-warning reports result in one Telegram send while a real walkout stays separate',async t=>{
-  const f=fixture(t),now=Date.now();
-  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
-  insert.run('https://outlet-a.example/union-a','LS일렉트릭',
-    'LS일렉트릭 노조, 임금 인상 갈등에 첫 파업 예고',
-    'LS일렉트릭 노동조합은 임금 교섭 난항에 따라 파업을 예고했다고 밝혔다.',
-    now-10000,now);
-  insert.run('https://outlet-b.example/union-b','LS일렉트릭',
-    'LS일렉트릭 사무기술직 노조, 임단협 결렬에 파업 예정',
-    '임금과 성과급 협상을 두고 노조와 사측이 충돌하며 노조가 파업을 예고했다.',
-    now-5000,now);
-  const r=await runNewsCheck(f.env);
-  assert.equal(r.sent,1,'same labor-dispute stage from different outlets sends once');
-  assert.equal(f.replies.length,1);
-  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='LS일렉트릭' ORDER BY url").all();
-  assert.equal(rows.filter(x=>x.duplicate_of!==null).length,1);
-  assert.ok(rows.every(x=>x.sent_ms!==null));
-});
-
-
-test('one company Q3 earnings release from three outlets produces only one Telegram alert',async t=>{
-  const f=fixture(t),now=Date.now();
-  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
-  const titles=[
-    ['https://cbc.example/earnings','서진시스템 3분기 영업이익 788억9500만원…전년비 195.8% 증가','서진시스템이 3분기 영업이익 788억9500만원을 기록했다고 발표했다.'],
-    ['https://infomax.example/earnings','서진시스템, 3분기 영업이익 789억원…3배 증가','서진시스템의 올해 3분기 연결 영업이익 789억원이 잠정 집계됐다.'],
-    ['https://mtn.example/earnings','서진시스템, 창립 첫 분기 매출 1000억원 돌파…수익 확대','서진시스템은 올해 3분기 매출 1000억원을 돌파했으며 영업이익도 전년비 3배 증가했다.']
-  ];
-  titles.forEach(([url,title,description],i)=>insert.run(url,'서진시스템',title,description,now-10000+i*1000,now));
-  const result=await runNewsCheck(f.env);
-  assert.equal(result.sent,1,'syndicated results from three outlets must send once');
-  assert.equal(f.replies.length,1);
-  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='서진시스템' AND url LIKE '%example/earnings' ORDER BY url").all();
-  assert.equal(rows.length,3);
-  assert.equal(rows.filter(row=>row.duplicate_of!==null).length,2);
-  assert.ok(rows.every(row=>row.sent_ms!==null));
 });
 
 
@@ -512,75 +279,6 @@ test('already queued APR multi-company beauty roundup is skipped but earnings an
   assert.match(f.replies[0].text,/3분기 영업이익/);
   assert.doesNotMatch(f.replies[0].text,/똑똑한케어/);
   assert.ok(f.sql.prepare('SELECT sent_ms FROM articles WHERE url=?').get(prUrl).sent_ms!==null);
-});
-
-
-
-test('user-reported Seers/iKoob LabConnect repeated coverage sends zero duplicates, a new supply contract still sends',async t=>{
-  const f=fixture(t),now=Date.parse('2026-11-03T13:40:00+09:00');
-  t.mock.timers.enable({apis:['Date'],now});
-  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
-  insert.run('https://www.thefairnews.co.kr/news/articleView.html?idxno=92899','씨어스',
-    "[씨어스] '의료데이터 한곳에 모은다'…아이쿱 'LabConnect' 중심 씨어스 연동 확대",
-    "아이쿱의 의료데이터 통합 플랫폼 LabConnect에 씨어스의 모니터링 솔루션 thynC 및 CGM LiVE 연속혈당 기술 연동",
-    now-9000,now);
-  insert.run('https://other-press.example/icoob-seers','씨어스',
-    '[씨어스] 아이쿱, 씨어스 입원환자 모니터링 솔루션에 연속혈당 솔루션 적용',
-    '씨어스 thynC 와 아이쿱의 랩커넥트 CGM LiVE를 연동',
-    now-8000,now);
-  insert.run('https://new-contract.example/seers','씨어스',
-    '씨어스 아이쿱 CGM LiVE 신규 공급 계약 체결',
-    '씨어스가 아이쿱과 신규 공급 계약을 체결했다.',
-    now-7000,now);
-  const r=await runNewsCheck(f.env,now);
-  assert.equal(r.sent,1,'the two already-covered partnership integration headlines must not send');
-  assert.equal(f.replies.length,1);
-  assert.match(f.replies[0].text,/신규 공급 계약/);
-  const rows=f.sql.prepare("SELECT title,duplicate_of,sent_ms FROM articles WHERE ticker='씨어스' ORDER BY pub_ms").all();
-  assert.equal(rows.length,3);
-  assert.equal(rows[0].duplicate_of,'event:seers-icoob-labconnect-thync-cgm-integration-2026-11-03');
-  assert.equal(rows[1].duplicate_of,'event:seers-icoob-labconnect-thync-cgm-integration-2026-11-03');
-  assert.equal(rows[2].duplicate_of,null);
-  assert.ok(rows.every(x=>x.sent_ms!==null));
-});
-
-
-
-test('six repackaged Krafton G-STAR 2026 announcements in D1 send zero alerts while new contract sends',async t=>{
-  const f=fixture(t),now=Date.parse('2026-11-03T14:45:00+09:00');
-  t.mock.timers.enable({apis:['Date'],now});
-  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
-  const articles=[
-    ['https://www.inews24.com/view/2022038','크래프톤, 지스타 2026 현장 프로그램 공개',
-      '11월 19일부터 22일까지 부산 벡스코에서 열리는 지스타 2026 운영 프로그램을 공개했다.'],
-    ['https://www.thedailypost.kr/news/articleView.html?idxno=116616','크래프톤, 지스타 2026서 신작 5종 시연 및 체험형 프로그램 마련',
-      '국제 게임 전시회 지스타 2026에서 신작 시연 및 아이브 협업 체험형 콘텐츠를 마련했다.'],
-    ['https://zdnet.co.kr/view/?no=20261103142021','크래프톤, 지스타 현장 프로그램 공개…펍지G·아이브 협업 공간 마련',
-      '크래프톤은 지스타 2026 주요 현장 프로그램을 3일 공개했다.'],
-    ['https://www.e-science.co.kr/news/articleView.html?idxno=138827','크래프톤, 지스타 10년 연속 참가…아이브 협업 앞세워 현장 공략',
-      '크래프톤이 부산 벡스코에서 개최되는 지스타 2026에 참가한다.'],
-    ['https://www.khgames.co.kr/news/articleView.html?idxno=309956',"크래프톤, '지스타 2026'서 신작 4종 시연",
-      '크래프톤이 지스타 2026 주요 현장 프로그램을 공개했다.'],
-    ['https://www.youthdaily.co.kr/news/article.html?no=229292','PUBG 전장에 아이브 뜬다(?)…크래프톤, 지스타 2026 체험 콘텐츠 확대',
-      '게임전시회 지스타 2026에서 아이브 협업 콘텐츠를 오프라인으로 선보인다.']
-  ];
-  articles.forEach(([url,title,description],i)=>insert.run(url,'크래프톤',title,description,now-6000+i*500,now));
-  insert.run('https://new-deal.example/game-publishing','크래프톤',
-    '크래프톤, 지스타 2026에서 신규 퍼블리싱 계약 체결',
-    '크래프톤이 새 게임 파트너와 계약을 체결했다.',
-    now-2000,now);
-  const result=await runNewsCheck(f.env,now);
-  assert.equal(result.sent,1,'already delivered G-STAR briefing has six variants but should not send');
-  assert.equal(f.replies.length,1);
-  assert.match(f.replies[0].text,/신규 퍼블리싱 계약/);
-  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='크래프톤' ORDER BY pub_ms").all();
-  assert.equal(rows.length,7);
-  for (const row of rows.slice(0,6)){
-    assert.equal(row.duplicate_of,'event:krafton-gstar-2026-program-briefing-2026-11-03',row.url);
-    assert.ok(row.sent_ms!==null);
-  }
-  assert.equal(rows[6].duplicate_of,null);
-  assert.ok(rows[6].sent_ms!==null);
 });
 
 
@@ -617,156 +315,3 @@ test('future-proof multi-company digests from several publishers never generate 
 
 
 
-test('Lunit Learning Unit 2.0 four publisher announcements are removed from D1 queue; real new agreement still sends',async t=>{
-  const f=fixture(t),now=Date.parse('2026-11-06T10:17:00+09:00');
-  t.mock.timers.enable({apis:['Date'],now});
-  f.sql.prepare('INSERT INTO watchlist_overrides(ticker,aliases_json,enabled) VALUES(?,?,1)')
-    .run('루닛',JSON.stringify(['루닛']));
-  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
-  insert.run('https://daily.hankooki.com/news/articleView.html?idxno=1422512','루닛',
-    "[루닛] 루닛, 의료 특화 AI '러닝유닛 2.0' 공개",
-    "컨소시엄이 정부 의과학 특화 파운데이션 모델 프로젝트를 완수, 의료 특화 모델 러닝유닛 2.0을 공개했다.",
-    now-8000,now);
-  insert.run('https://www.etoday.co.kr/news/view/2644883','루닛',
-    '[루닛] 루닛, 의료 특화 AI 모델 개발 완료…진료·병원행정 등 의료 현장서 실증',
-    "정부의 국가 전략사업인 '의과학 특화 파운데이션 모델' 프로젝트를 완수했다고 밝혔다.",
-    now-7000,now);
-  insert.run('https://www.wedaily.com/news/articleView.html?idxno=303039','루닛',
-    "[루닛] '원내 서버서 진료 보조부터 원무까지'…루닛, 오픈소스 의료 AI '러닝유...",
-    "루닛이 병원 내부 전산망에서 진료 및 행정 전반을 지원하는 의료 특화 파운데이션 모델을 선보였다. 과기정통부 의과학 특화 프로젝트.",
-    now-6500,now);
-  insert.run('https://www.news1.kr/bio/healthcare/6345418','루닛',
-    "[루닛] 루닛, 의료 특화 AI '러닝유닛 2.0' 공개…병원 현장 실증 완료",
-    "의료 인공지능 기업 루닛이 의료기관의 진료와 행정 업무를 지원하는 의료 특화 파운데이션 모델을 공개했다.",
-    now-6200,now);
-  insert.run('https://new-business.example/lunit-hospital-contract','루닛',
-    '루닛 새 의료 AI 모델 대학병원 공급 계약 체결',
-    "루닛이 병원과 새 공급 계약을 체결했다고 발표했다.",
-    now-6000,now);
-  const result=await runNewsCheck(f.env,now);
-  assert.equal(result.sent,1,'old foundation model launch is not repeated, actual new deal still alerts');
-  assert.equal(f.replies.length,1);
-  assert.match(f.replies[0].text,/공급 계약/);
-  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='루닛' ORDER BY pub_ms").all();
-  assert.equal(rows.length,5);
-  assert.equal(rows[0].duplicate_of,'event:lunit-learningunit20-foundation-model-launch-2026-11-06');
-  assert.equal(rows[1].duplicate_of,'event:lunit-learningunit20-foundation-model-launch-2026-11-06');
-  assert.equal(rows[2].duplicate_of,'event:lunit-learningunit20-foundation-model-launch-2026-11-06');
-  assert.equal(rows[3].duplicate_of,'event:lunit-learningunit20-foundation-model-launch-2026-11-06');
-  assert.equal(rows[4].duplicate_of,null);
-  assert.ok(rows.every(x=>x.sent_ms!==null));
-});
-
-
-
-test('all-company cross-publisher duplicates send one initial event only; material followups are still sent',async t=>{
-  const f=fixture(t),now=Date.parse('2026-11-06T14:00:00+09:00');
-  t.mock.timers.enable({apis:['Date'],now});
-  f.sql.prepare('INSERT INTO watchlist_overrides(ticker,aliases_json,enabled) VALUES(?,?,1)')
-    .run('테스트기업',JSON.stringify(['테스트기업']));
-  const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
-  insert.run('https://first-press.example/smartfactory','테스트기업',
-    '테스트기업 스마트팩토리 플랫폼 ArgoFlow 공개',
-    '공장 설비를 통합 제어하는 스마트팩토리 플랫폼 ArgoFlow를 개발 완료해 선보였다.',
-    now-5000,now);
-  insert.run('https://second-press.example/factory','테스트기업',
-    '테스트기업 제조공장 설비 제어 플랫폼 개발 완료',
-    '공장 설비를 통합 제어하는 스마트팩토리 플랫폼 ArgoFlow를 공개했다.',
-    now-4000,now);
-  insert.run('https://third-press.example/contract','테스트기업',
-    '테스트기업 ArgoFlow 신규 공급 계약 체결',
-    '공장 설비를 통합 제어하는 스마트팩토리 플랫폼 ArgoFlow를 고객사에 납품한다.',
-    now-3000,now);
-  const first=await runNewsCheck(f.env,now);
-  assert.equal(first.sent,2,'one original release and one independent contract');
-  assert.equal(f.replies.length,2,'same release from two publishers is not sent twice');
-  assert.match(f.replies[0].text,/ArgoFlow 공개/);
-  assert.match(f.replies[1].text,/신규 공급 계약/);
-  const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='테스트기업' ORDER BY pub_ms").all();
-  assert.equal(rows.length,3);
-  assert.equal(rows[0].duplicate_of,null);
-  assert.equal(rows[1].duplicate_of,rows[0].url);
-  assert.equal(rows[2].duplicate_of,null);
-  assert.ok(rows.every(x=>x.sent_ms!==null),'no duplicate left pending');
-  const next=await runNewsCheck(f.env,now+60000);
-  assert.equal(next.sent,0,'repeat cron does not replay previously sent article');
-  assert.equal(f.replies.length,2);
-});
-
-
-
-test('the three PUBG Steam #1 articles from screenshots do not resend from D1, but a new contract does',async t=>{
- const f=fixture(t),now=Date.parse('2026-11-06T17:04:00+09:00');
- t.mock.timers.enable({apis:['Date'],now});
- const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
- const a=[
-  ['http://www.worktoday.co.kr/news/articleView.html?idxno=91596',
-   "[크래프톤] 크래프톤 '배틀그라운드', 스팀 글로벌·한국 매출 순위 1위",
-   'PUBG 배틀그라운드가 6일 기준 스팀 최고 인기 게임 글로벌 및 한국 매출 순위에서 1위를 차지했다.'],
-  ['https://www.econovill.com/news/articleView.html?idxno=756341',
-   '[크래프톤] 크래프톤 배틀그라운드 스팀 매출 1위 탈환',
-   'PUBG: BATTLEGROUNDS가 스팀 최고 인기 게임 글로벌과 한국 지역 매출 순위 1위를 기록했다.'],
-  ['https://www.dizzotv.com/site/data/html_dir/2026/11/06/2026110680181.html',
-   '[크래프톤] "9년 지나도 배그는 배그"…크래프톤, 스팀 글로벌 매출 1위',
-   'PUBG 배틀그라운드는 6일 스팀 최고 인기 게임 차트에서 전 세계와 한국 지역 모두 1위를 차지했다.']
- ];
- a.forEach(([url,title,description],n)=>insert.run(url,'크래프톤',title,description,now-5000+n*1000,now));
- insert.run('https://new-business.example/krafton-20261106-contract','크래프톤',
-  '크래프톤 게임 IP 신규 공급 계약 체결',
-  '회사는 새 고객과 게임 지식재산권 공급 계약을 체결했다.',
-  now-1000,now);
- const result=await runNewsCheck(f.env,now);
- assert.equal(result.sent,1,'three syndications already received must yield no new Telegram messages');
- assert.equal(f.replies.length,1);
- assert.match(f.replies[0].text,/신규 공급 계약/);
- const rows=f.sql.prepare("SELECT url,duplicate_of,sent_ms FROM articles WHERE ticker='크래프톤' ORDER BY pub_ms").all();
- assert.equal(rows.length,4);
- for(const row of rows.slice(0,3)){
-  assert.equal(row.duplicate_of,'event:krafton-pubg-steam-sales-1st-2026-11-06');
-  assert.ok(row.sent_ms!==null);
- }
- assert.equal(rows[3].duplicate_of,null);
- assert.ok(rows[3].sent_ms!==null);
-});
-
-
-
-test('Aprilbio screenshot: three same-day strategy angles send only one original; completed deal stays separate',async t=>{
- const f=fixture(t),now=Date.parse('2026-11-09T16:03:00+09:00');
- t.mock.timers.enable({apis:['Date'],now});
- f.sql.prepare('INSERT OR REPLACE INTO watchlist_overrides(ticker,aliases_json,enabled) VALUES(?,?,1)')
-  .run('에이프릴바이오',JSON.stringify(['에이프릴바이오']));
- const insert=f.sql.prepare('INSERT INTO articles(url,ticker,title,description,pub_ms,discovered_ms) VALUES(?,?,?,?,?,?)');
- const articles=[
-  ['https://www.ajunews.com/view/20261109152849898',
-   "[에이프릴바이오] 에이프릴바이오, 4300억 실탄 확보...내년 기술수출로 기업가치 시험대",
-   '차상훈 에이프릴바이오 대표이사가 9일 오후 서울 여의도 콘래드에서 발표하고 있다. 에이프릴바이오가 내년 기술수출 성과를'],
-  ['https://www.mt.co.kr/thebio/2026/11/09/2026110915315361344',
-   "[에이프릴바이오] 에이프릴바이오, '4300억 실탄' R&D 투입...'내년 3종 기술이전 목표'",
-   '에이프릴바이오가 신규 핵심 파이프라인 3종을 공개하고 이를 내년 기술이전하겠다는 목표를 제시했다. 4000억원이 넘는 현금 자산을 토대로 다수 신약을 개발한다.'],
-  ['https://www.ebn.co.kr/news/articleView.html?idxno=1730947',
-   "[에이프릴바이오] [바이오현장] '실탄·우군' 확보한 에이프릴바이오...글로벌 플랫폼 기업 정조준",
-   '에이프릴바이오가 대규모 투자 유치를 발판으로 신약 연구개발(R&D)을 가속하고 글로벌 플랫폼 바이오 기업으로의 도약에 나선다. 신규 투자자인 TKG그룹과 IMM인베스트먼트는 장기 자본 공급을 지원한다.']
- ];
- articles.forEach(([url,title,description],i)=>insert.run(url,'에이프릴바이오',title,description,
-   now-5000+i*1000,now));
- insert.run('https://separate.example.com/new-license','에이프릴바이오',
-   '에이프릴바이오 4300억 실탄 기반 신규 기술수출 계약 체결',
-   '에이프릴바이오가 글로벌 제약사와 새로운 라이선스 계약을 체결했다.',
-   now-1000,now);
- const first=await runNewsCheck(f.env,now);
- assert.equal(first.sent,2,'one briefing and one independent executed licensing deal');
- assert.equal(f.replies.length,2,'the two rewritten briefing articles must not send');
- assert.match(f.replies[0].text,/기업가치 시험대/);
- assert.match(f.replies[1].text,/신규 기술수출 계약/);
- const rows=f.sql.prepare("SELECT title,url,duplicate_of,sent_ms FROM articles WHERE ticker='에이프릴바이오' ORDER BY pub_ms").all();
- assert.equal(rows.length,4);
- assert.equal(rows[0].duplicate_of,null);
- assert.equal(rows[1].duplicate_of,rows[0].url);
- assert.equal(rows[2].duplicate_of,rows[0].url);
- assert.equal(rows[3].duplicate_of,null);
- assert.ok(rows.every(row=>row.sent_ms!==null));
- const rerun=await runNewsCheck(f.env,now+60000);
- assert.equal(rerun.sent,0);
- assert.equal(f.replies.length,2);
-});

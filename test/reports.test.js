@@ -29,12 +29,14 @@ const morning = Date.parse('2026-11-01T08:00:00+09:00');
 const later = Date.parse('2026-11-01T18:00:00+09:00');
 const report = (title, broker = '삼성증권', suffix = '1') => ({ title, broker, date: '2026-11-01', url: 'https://example.com/report-' + suffix });
 
-test('report slots match KST 08/18/23, including UTC date rollover and bounded retries', () => {
-  assert.equal(reportSlot(morning), '2026-11-01:8');
-  assert.equal(reportSlot(later), '2026-11-01:18');
-  assert.equal(reportSlot(Date.parse('2026-11-01T23:14:59+09:00')), '2026-11-01:23');
-  assert.equal(reportSlot(Date.parse('2026-11-01T23:15:00+09:00')), null);
-  assert.equal(reportSlot(morning - 1), null);
+test('report slots are 15-minute KST buckets from 06:00, including UTC date rollover', () => {
+  assert.equal(reportSlot(morning), '2026-11-01:8:0');
+  assert.equal(reportSlot(morning + 14 * 60000), '2026-11-01:8:0');
+  assert.equal(reportSlot(morning + 15 * 60000), '2026-11-01:8:1');
+  assert.equal(reportSlot(later), '2026-11-01:18:0');
+  assert.equal(reportSlot(Date.parse('2026-11-01T23:59:00+09:00')), '2026-11-01:23:3');
+  assert.equal(reportSlot(Date.parse('2026-11-02T05:59:00+09:00')), null);
+  assert.equal(reportSlot(Date.parse('2026-11-02T06:00:00+09:00')), '2026-11-02:6:0');
 });
 test('matching uses live aliases, exact Naver company identity and bounded short aliases', () => {
   const companies = new Map([['달바글로벌', ['달바글로벌']], ['LS일렉트릭', ['LS ELECTRIC']], ['테스트', ['AI']]]);
